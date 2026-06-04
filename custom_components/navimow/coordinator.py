@@ -52,6 +52,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.data: dict[str, Any] = {}
         self._last_state: DeviceStateMessage | None = None
         self._last_attributes: DeviceAttributesMessage | None = None
+        self._last_location: dict[str, Any] | None = None
         self._last_mqtt_update: float | None = None
         self._last_http_fetch: float | None = None
         self._last_data_source: str | None = None
@@ -66,6 +67,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "device": self.device,
             "state": self._last_state,
             "attributes": self._last_attributes,
+            "location": self._last_location,
             "meta": {
                 "last_data_source": self._last_data_source,
                 "last_mqtt_update_monotonic": self._last_mqtt_update,
@@ -207,6 +209,17 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _update_from_attributes(self, attrs: DeviceAttributesMessage) -> None:
         self._last_attributes = attrs
         self.async_set_updated_data(self._build_data())
+
+    def ingest_location(self, location: dict) -> None:
+        if not isinstance(location, dict):
+            return
+        if location.get("device_id") not in (None, self.device.id):
+            return
+        self._last_location = location
+        self.async_set_updated_data(self._build_data())
+
+    def get_device_location(self) -> dict | None:
+        return self.data.get("location")
 
     def get_device_state(self) -> DeviceStateMessage | None:
         return self.data.get("state")

@@ -1,5 +1,6 @@
 """The Navimow integration."""
 import asyncio
+import json
 import logging
 from typing import Any
 from urllib.parse import urlparse
@@ -23,6 +24,7 @@ from .const import (
     MQTT_PASSWORD,
 )
 from .services import async_setup_services
+from .location import location_topic, parse_location_payload
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.debug("Navimow module imported (__init__.py)")
@@ -165,6 +167,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "Bearer <masked>" if auth_headers else "<none>",
         )
 
+        _location_cache: dict[str, dict] = {}
+        _location_coordinators: dict[str, Any] = {}
         _mqtt_refresh_lock = asyncio.Lock()
         # 用列表作为可变标志容器，使 async_unload_entry（不同函数作用域）可以修改它
         _unload_flag: list[bool] = [False]
@@ -187,6 +191,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     mqtt._use_tls,
                     _get_client_id(),
                 )
+                for _d in devices:
+                    _did = getattr(_d, "id", None)
+                    if _did:
+                        try:
+                            mqtt.client.subscribe(location_topic(_did))
+                        except Exception as _err:  # noqa: BLE001
+                            _LOGGER.warning("Failed to subscribe location topic: %s", _err)
 
             async def _on_ready() -> None:
                 _LOGGER.info(
@@ -228,6 +239,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     device_id,
                     payload_text,
                 )
+                if device_id and topic.endswith("/realtimeDate/location"):
+                    try:
+                        _data = json.loads(payload_text)
+                    except (ValueError, TypeError):
+                        _data = None
+                    _loc = parse_location_payload(_location_cache, device_id, _data)
+                    if _loc is not None:
+                        _coord = _location_coordinators.get(device_id)
+                        if _coord is not None:
+                            hass.loop.call_soon_threadsafe(_coord.ingest_location, _loc)
+                    return
                 if original_on_message is not None:
                     await original_on_message(topic, payload, device_id)
 
@@ -353,6 +375,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await coordinator.async_setup()
             await coordinator.async_config_entry_first_refresh()
             coordinators[device.id] = coordinator
+            _location_coordinators[device.id] = coordinator
 
         # 存储数据
         hass.data[DOMAIN][entry.entry_id] = {

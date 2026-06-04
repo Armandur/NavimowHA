@@ -1,6 +1,8 @@
 """Sensor platform for Navimow integration."""
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -37,6 +39,39 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda coordinator: (
             state.battery if (state := coordinator.get_device_state()) else None
+        ),
+    ),
+    NavimowSensorEntityDescription(
+        key="zone",
+        name="Zone",
+        icon="mdi:map-marker",
+        value_fn=lambda c: (
+            loc.get("partition") if (loc := c.get_device_location()) else None
+        ),
+    ),
+    NavimowSensorEntityDescription(
+        key="position_x",
+        name="Position X",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda c: (loc.get("x") if (loc := c.get_device_location()) else None),
+    ),
+    NavimowSensorEntityDescription(
+        key="position_y",
+        name="Position Y",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda c: (loc.get("y") if (loc := c.get_device_location()) else None),
+    ),
+    NavimowSensorEntityDescription(
+        key="heading",
+        name="Heading",
+        native_unit_of_measurement="°",
+        icon="mdi:compass",
+        value_fn=lambda c: (
+            round(math.degrees(loc["theta"]) % 360, 1)
+            if (loc := c.get_device_location()) and loc.get("theta") is not None
+            else None
         ),
     ),
 )
