@@ -1,4 +1,4 @@
-# Navimow for Home Assistant
+# Navimow for Home Assistant — position & zone fork
 
 <p align="center">
   <img src="https://fra-navimow-prod.s3.eu-central-1.amazonaws.com/img/navimowhomeassistant.png" width="600">
@@ -6,86 +6,113 @@
 
 Monitor and control Navimow robotic mowers in Home Assistant.
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=segwaynavimow&repository=NavimowHA&category=Integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=pgoutsos&repository=NavimowHA&category=Integration)
 
-## Features ✨
+> **This is a fork of [segwaynavimow/NavimowHA](https://github.com/segwaynavimow/NavimowHA).**
+> It adds **real-time position and current mowing-zone sensors** on top of the
+> official integration. All credit for the base integration goes to the Segway
+> Navimow team. See [What this fork adds](#what-this-fork-adds-) below.
 
-### Mower Control
+## What this fork adds ✨
 
-Control your mower directly from Home Assistant:
+The official integration exposes a `lawn_mower` entity and a battery sensor. The
+mower also continuously publishes its **live pose and current map partition**
+over MQTT (topic `/downlink/vehicle/{id}/realtimeDate/location`), but the bundled
+`navimow-sdk` neither subscribes to that topic nor parses it, so none of it
+reaches Home Assistant.
 
-* Start mowing
-* Pause mowing
-* Resume mowing
-* Send mower to dock
+This fork makes the integration subscribe to that topic and turn it into
+entities, giving you these **additional sensors** per mower (populated while the
+mower is active):
 
-### Device Monitoring
+| Entity | Meaning |
+| --- | --- |
+| `sensor.<mower>_zone` | Current mapped partition id — i.e. which zone the mower is in |
+| `sensor.<mower>_position_x` | X position in meters (local grid; origin ≈ the dock / RTK reference) |
+| `sensor.<mower>_position_y` | Y position in meters |
+| `sensor.<mower>_heading` | Mower orientation in degrees (0–360) |
 
-Keep track of mower status and health:
+These unlock zone-aware and position-aware automations — for example opening a
+gate when the mower crosses between zones, geofencing, or live mapping. The
+coordinates are a **local Cartesian grid in meters**, not latitude/longitude.
 
-* Real-time mower state
-* Battery level sensor
-* Integration with Home Assistant dashboards
+### How it works
 
-### Real-Time Communication
+No changes to `navimow-sdk` are required — this fork is self-contained and works
+against the stock SDK from PyPI:
 
-* **MQTT-based real-time communication**
-* Fast state updates and reliable device synchronization
+* On MQTT connect, the integration subscribes to the `…/realtimeDate/location`
+  topic for each device.
+* Incoming location messages (a JSON array of objects keyed by `type`:
+  `1` = pose, `3` = partition/zone, `4` = task-delay) are decoded in
+  `location.py` and merged into a per-device record, so a pose update never
+  wipes the last-known zone.
+* The record is pushed to the coordinator and exposed via the four sensors above.
 
-### Native Home Assistant Integration
-
-* Native **`lawn_mower` entity**
-* Fully compatible with **Home Assistant automations**
-* Device and entity model aligned with HA standards
-
-### Continuous Development
-
-This integration is **under active development**.
-
-**More features are being added all the time**, including additional sensors, diagnostics, and deeper Home Assistant automation support.
+Because the location stream is delivered through Segway's cloud, these sensors
+update only while the mower is active and depend on internet connectivity. Build
+any safety-critical automation (e.g. a gate) with a fallback on the mower
+`status` and a physical sensor.
 
 ## Prerequisites 📋
 
-- **Warning**: Home Assistant minimum version **2026.1.0**
-- **Account**: your Navimow account can sign in to the official app (used for authorization)
+- **Home Assistant** minimum version **2026.1.0**
+- A **Navimow account** that can sign in to the official app (used for authorization)
 
 ## Installation 🛠️
 
-This integration is not in the default HACS store. You must add it as a custom repository.
+This integration is not in the default HACS store; add this fork as a custom
+repository:
 
-This integration will be installed as a custom repository in HACS:
-
-1. HACS → Integrations → top-right menu → **Custom repositories**
-2. Repository: `https://github.com/segwaynavimow/NavimowHA`
-3. Category: Integration
-4. Search for `Navimow` in HACS and install it
+1. HACS → top-right menu → **Custom repositories**
+2. Repository: `https://github.com/pgoutsos/NavimowHA`
+3. Category: **Integration**
+4. Search for `Navimow` in HACS and download it
 5. Restart Home Assistant
 6. Settings → Devices & Services → Add Integration → search `Navimow`
 
+**Switching from the official integration?** In HACS, **Remove** the existing
+Navimow download first (this deletes the files but keeps your configured device
+and login), then add this fork as above and download it. Do **not** delete the
+Navimow integration from Settings → Devices & Services, or you'll have to
+re-authenticate.
+
 ## Usage 🎮
 
-See the [Getting Started](https://github.com/segwaynavimow/NavimowHA/wiki/Getting-Started).
+After setup you should see:
 
-Once the integration is set up, you can control and monitor your Navimow mower using Home Assistant! 🎉
-
-After setup, you should see:
-
-- A `lawn_mower` entity (start/pause/dock/resume)
+- A `lawn_mower` entity (start / pause / dock)
 - A battery `sensor`
+- `zone`, `position_x`, `position_y`, and `heading` sensors (this fork)
+
+The position/zone sensors show `unknown` while docked and begin updating once
+the mower starts moving.
+
+See the upstream [Getting Started](https://github.com/segwaynavimow/NavimowHA/wiki/Getting-Started)
+guide for general setup.
 
 ## Troubleshooting 🔧
 
-If you encounter any issues with the Navimow integration, please check the Home Assistant logs for error messages. You can also try the following steps:
+Check the Home Assistant logs for error messages, and:
 
-- Ensure that your mower is connected to your home network and accessible from Home Assistant.
+- Ensure the mower is connected to your network and reachable from Home Assistant.
 - Restart Home Assistant and check if the issue persists.
-- Make sure you are not blocking network access to services in China (if applicable to your environment).
-- If you are using DNS filtering/ad-blocking, try disabling it temporarily.
+- Make sure you are not blocking network access to Segway's services.
+- If you use DNS filtering/ad-blocking, try disabling it temporarily.
 
-If the problem continues, please file an issue on GitHub and include relevant log snippets:
-
-- `https://github.com/segwaynavimow/NavimowHA/issues`
+If the position/zone sensors never populate while mowing, enable debug logging
+for `mower_sdk.mqtt` (Developer Tools → Actions → `logger.set_level`) and confirm
+that `…/realtimeDate/location` messages are arriving.
 
 ## Navimow SDK Library 📚
 
-This integration uses `navimow-sdk` to communicate with Navimow mowers. `navimow-sdk` provides the Python API used by this integration (details will be expanded in the SDK documentation).
+This integration uses the `navimow-sdk` package to communicate with Navimow
+mowers. This fork does **not** modify the SDK.
+
+## Relationship to upstream & contributing back
+
+This fork tracks [segwaynavimow/NavimowHA](https://github.com/segwaynavimow/NavimowHA).
+The position/zone functionality is a candidate for upstreaming — if/when the
+official integration adds it natively, this fork can be retired in favor of the
+official release. Issues and PRs specific to the position/zone sensors can be
+filed against this repository; general integration issues belong upstream.
