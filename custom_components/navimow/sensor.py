@@ -135,3 +135,18 @@ class NavimowSensor(CoordinatorEntity[NavimowCoordinator], SensorEntity):
     def native_value(self) -> Any:
         """Return sensor value from coordinator."""
         return self.entity_description.value_fn(self.coordinator)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Expose the extra real-time location fields on the zone sensor."""
+        if self.entity_description.key != "zone":
+            return None
+        loc = self.coordinator.get_device_location()
+        if not loc:
+            return None
+        return {
+            "partition_ids": loc.get("partition_ids"),
+            "task_delay": loc.get("task_delay"),
+            "vehicle_state": loc.get("vehicle_state"),
+            "pose_time": loc.get("pose_time"),
+        }

@@ -54,6 +54,16 @@ update only while the mower is active and depend on internet connectivity. Build
 any safety-critical automation (e.g. a gate) with a fallback on the mower
 `status` and a physical sensor.
 
+## Examples 📦
+
+[`examples/gate-automation/`](examples/gate-automation/) contains a complete,
+parameterized package that uses the zone/position sensors to **automatically open
+a gate** so the mower can reach zones on the far side of the gate from its dock,
+and close it again once docked. See
+[`examples/gate-automation/SETUP.md`](examples/gate-automation/SETUP.md) for the
+full walkthrough (it also includes a live position **map card**,
+`navimow-map-card.js`).
+
 ## Prerequisites 📋
 
 - **Home Assistant** minimum version **2026.1.0**

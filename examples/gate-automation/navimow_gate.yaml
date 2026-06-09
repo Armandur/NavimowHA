@@ -1,0 +1,260 @@
+# =====================================================================
+#  Navimow auto-mower gate automation  (Home Assistant package)
+# =====================================================================
+#  Opens a gate automatically so a Segway Navimow can pass through it to
+#  reach mowing zones on the far side of the gate from its dock, and closes
+#  it again once the mower is docked. Works with the position/zone fork of
+#  the Navimow integration (github.com/pgoutsos/NavimowHA) for the zone
+#  sensor, a LocalTuya (or similar) switch that pulses the gate opener, and
+#  two contact sensors for the gate's open/closed endpoints.
+#
+#  ---------------------------------------------------------------------
+#  SETUP  (see SETUP.md for the full walkthrough)
+#  ---------------------------------------------------------------------
+#  1) FIND-AND-REPLACE these 5 entity IDs throughout this file with yours:
+#
+#       lawn_mower.peter_griffin                 -> your mower's lawn_mower entity
+#       sensor.peter_griffin_zone                -> your mower's zone sensor (from the fork)
+#       switch.garden_gate_opener_switch_1       -> your gate-opener switch (pulse relay)
+#       binary_sensor.garden_gate_closed_sensor  -> your "gate fully CLOSED" contact
+#       binary_sensor.garden_gate_open_sensor    -> your "gate fully OPEN" contact
+#
+#     (Every spot that needs changing is also tagged with "# CHANGE:".)
+#
+#  2) SET YOUR ZONES in the two tables tagged "# EDIT ZONE MAP" below:
+#       - the id -> friendly-name map (display only), and
+#       - the list of zone ids that REQUIRE passing through the gate
+#         (i.e. the zones on the far side of the gate from the dock).
+#
+#  ---------------------------------------------------------------------
+#  HOW IT WORKS
+#  ---------------------------------------------------------------------
+#  The zone sensor reports the mower's CURRENT TARGET zone, set at task
+#  start BEFORE it physically crosses -- so we pre-open with lead time.
+#  binary_sensor.navimow_gate_zone_required turns on whenever that target
+#  is a gate-side zone; the open automation triggers off it. The gate stays
+#  open for the whole session and closes only once the mower's raw status is
+#  docked/charging (physically at the dock = clear of the channel). We also
+#  ensure-open on "returning" so a cancelled/finished mow can always cross
+#  back (a cancelled task sets the zone to 'unknown').
+#
+#  ASSUMED SENSOR POLARITY (verify yours; adjust the gate-status template +
+#  scripts if inverted):
+#       fully CLOSED => closed_sensor == off
+#       fully OPEN   => open_sensor   == off
+#       mid-travel   => BOTH sensors  == on
+#
+#  ASSUMED OPENER: a SINGLE-BUTTON CYCLIC pulse (one switch.turn_on =
+#  open->stop->close->reverse; the opener decides direction). The scripts
+#  only pulse from a confirmed endpoint and then verify the opposite
+#  endpoint, with a 45s timeout + notification on failure.
+#
+#  Toggle input_boolean.navimow_gate_automation off to disable everything.
+# =====================================================================
+
+input_boolean:
+  navimow_gate_automation:
+    name: Navimow gate automation enabled
+    icon: mdi:gate
+
+template:
+  - sensor:
+      # Friendly name for the mower's current TARGET zone.
+      # EDIT ZONE MAP (names): map each zone id to a display name.
+      - name: "Navimow current zone"
+        unique_id: navimow_current_zone_name
+        icon: mdi:map-marker
+        state: >
+          {% set names = {
+            '2': 'Backyard',
+            '7': 'Mikes Side',
+            '19': 'Frontyard',
+            '20': 'Party Side',
+            'unknown': 'None / idle',
+            'unavailable': 'Unavailable'
+          } %}
+          {% set z = states('sensor.peter_griffin_zone') %}
+          {{ names.get(z, z) }}
+
+      # Gate status: Closed / Open / Opening / Closing.
+      # Direction while moving is inferred from which endpoint we most
+      # recently LEFT (the sensor that most recently flipped to 'on').
+      - name: "Garden gate status"
+        unique_id: garden_gate_status
+        icon: mdi:gate
+        state: >-
+          {{ 'Closed'
+             if (states('binary_sensor.garden_gate_closed_sensor') == 'off' and states('binary_sensor.garden_gate_open_sensor') == 'on')
+             else 'Open'
+             if (states('binary_sensor.garden_gate_open_sensor') == 'off' and states('binary_sensor.garden_gate_closed_sensor') == 'on')
+             else (('Opening' if states.binary_sensor.garden_gate_closed_sensor.last_changed > states.binary_sensor.garden_gate_open_sensor.last_changed else 'Closing')
+             if (states('binary_sensor.garden_gate_closed_sensor') == 'on' and states('binary_sensor.garden_gate_open_sensor') == 'on')
+             else 'Unknown') }}
+
+  - binary_sensor:
+      # On when the mower's CURRENT TARGET zone requires the gate. This is
+      # the single place the gate logic decides "front vs back".
+      # EDIT ZONE MAP (gate-required): list the zone ids that are on the far
+      # side of the gate from the dock.
+      - name: "Navimow gate zone required"
+        unique_id: navimow_gate_zone_required
+        icon: mdi:gate-arrow-right
+        state: >-
+          {% set gate_zones = ['7', '19', '20'] %}
+          {{ states('sensor.peter_griffin_zone') in gate_zones }}
+
+      # On when the mower reports the 'charging' status (the entity STATE shows
+      # 'docked' while charging, but the raw status attribute distinguishes it).
+      - name: "Navimow charging"
+        unique_id: navimow_charging
+        device_class: battery_charging
+        icon: mdi:battery-charging
+        state: "{{ is_state_attr('lawn_mower.peter_griffin', 'status', 'charging') }}"
+
+      # On when the mower reports taskDelay:true (scheduled mow held/delayed,
+      # e.g. rain). Exposed as a zone-sensor attribute by the fork.
+      - name: "Navimow task delayed"
+        unique_id: navimow_task_delayed
+        icon: mdi:timer-sand
+        state: "{{ state_attr('sensor.peter_griffin_zone', 'task_delay') == true }}"
+
+script:
+  navimow_gate_ensure_open:
+    alias: "Navimow Gate - Ensure Open"
+    mode: single
+    sequence:
+      - choose:
+          # Already fully open -> nothing to do.
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.garden_gate_open_sensor   # CHANGE: open sensor
+                state: "off"
+            sequence: []
+          # Fully closed -> safe to pulse open, then verify.
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.garden_gate_closed_sensor  # CHANGE: closed sensor
+                state: "off"
+            sequence:
+              - service: switch.turn_on
+                target:
+                  entity_id: switch.garden_gate_opener_switch_1     # CHANGE: gate switch
+              - wait_template: "{{ is_state('binary_sensor.garden_gate_open_sensor','off') }}"  # CHANGE: open sensor
+                timeout: "00:00:45"
+                continue_on_timeout: true
+              - condition: template
+                value_template: "{{ not is_state('binary_sensor.garden_gate_open_sensor','off') }}"  # CHANGE: open sensor
+              - service: persistent_notification.create
+                data:
+                  title: "Navimow gate"
+                  message: "Tried to OPEN the gate but it did not reach fully-open within 45s. Check the gate."
+        default:
+          - service: persistent_notification.create
+            data:
+              title: "Navimow gate"
+              message: "OPEN requested but the gate is not at a known endpoint (mid-travel?). Not pulsing - check the gate."
+
+  navimow_gate_ensure_closed:
+    alias: "Navimow Gate - Ensure Closed"
+    mode: single
+    sequence:
+      - choose:
+          # Already fully closed -> nothing to do.
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.garden_gate_closed_sensor  # CHANGE: closed sensor
+                state: "off"
+            sequence: []
+          # Fully open -> safe to pulse closed, then verify.
+          - conditions:
+              - condition: state
+                entity_id: binary_sensor.garden_gate_open_sensor    # CHANGE: open sensor
+                state: "off"
+            sequence:
+              - service: switch.turn_on
+                target:
+                  entity_id: switch.garden_gate_opener_switch_1     # CHANGE: gate switch
+              - wait_template: "{{ is_state('binary_sensor.garden_gate_closed_sensor','off') }}"  # CHANGE: closed sensor
+                timeout: "00:00:45"
+                continue_on_timeout: true
+              - condition: template
+                value_template: "{{ not is_state('binary_sensor.garden_gate_closed_sensor','off') }}"  # CHANGE: closed sensor
+              - service: persistent_notification.create
+                data:
+                  title: "Navimow gate"
+                  message: "Tried to CLOSE the gate but it did not reach fully-closed within 45s. Check the gate."
+        default:
+          - service: persistent_notification.create
+            data:
+              title: "Navimow gate"
+              message: "CLOSE requested but the gate is not at a known endpoint (mid-travel?). Not pulsing - check the gate."
+
+automation:
+  - id: navimow_gate_open_for_gate_zone
+    alias: "Navimow Gate - Open when a gate-side zone is targeted"
+    mode: single
+    trigger:
+      # The target zone became a gate-side zone (centralized in the
+      # navimow_gate_zone_required binary_sensor above).
+      - platform: state
+        entity_id: binary_sensor.navimow_gate_zone_required
+        to: "on"
+      # Catch the case where a gate-side zone was already the target when
+      # mowing starts (the binary_sensor may not transition).
+      - platform: state
+        entity_id: lawn_mower.peter_griffin   # CHANGE: your mower
+        to: "mowing"
+    condition:
+      - condition: state
+        entity_id: input_boolean.navimow_gate_automation
+        state: "on"
+      - condition: state
+        entity_id: binary_sensor.navimow_gate_zone_required
+        state: "on"
+      # Skip if already fully open.
+      - condition: template
+        value_template: "{{ not is_state('binary_sensor.garden_gate_open_sensor','off') }}"  # CHANGE: open sensor
+    action:
+      - service: script.navimow_gate_ensure_open
+
+  - id: navimow_gate_open_on_returning
+    alias: "Navimow Gate - Ensure open while returning to dock"
+    mode: single
+    trigger:
+      # Returning means the mower may need to cross back through the gate.
+      # Covers a cancelled task (zone goes 'unknown') and normal finishes.
+      - platform: state
+        entity_id: lawn_mower.peter_griffin   # CHANGE: your mower
+        to: "returning"
+    condition:
+      - condition: state
+        entity_id: input_boolean.navimow_gate_automation
+        state: "on"
+      - condition: template
+        value_template: "{{ not is_state('binary_sensor.garden_gate_open_sensor','off') }}"  # CHANGE: open sensor
+    action:
+      - service: script.navimow_gate_ensure_open
+
+  - id: navimow_gate_close_on_dock
+    alias: "Navimow Gate - Close when mower docked"
+    mode: single
+    trigger:
+      # Use the raw 'status' attribute (docked/charging) so an 'idle' mower
+      # stranded on the far side is NOT mistaken for being home.
+      - platform: state
+        entity_id: lawn_mower.peter_griffin   # CHANGE: your mower
+        attribute: status
+        to: "docked"
+      - platform: state
+        entity_id: lawn_mower.peter_griffin   # CHANGE: your mower
+        attribute: status
+        to: "charging"
+    condition:
+      - condition: state
+        entity_id: input_boolean.navimow_gate_automation
+        state: "on"
+      # Skip if already fully closed.
+      - condition: template
+        value_template: "{{ not is_state('binary_sensor.garden_gate_closed_sensor','off') }}"  # CHANGE: closed sensor
+    action:
+      - service: script.navimow_gate_ensure_closed
