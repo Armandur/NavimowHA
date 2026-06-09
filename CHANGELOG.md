@@ -1,5 +1,31 @@
 # Changelog
 
+> This is a fork of [segwaynavimow/NavimowHA](https://github.com/segwaynavimow/NavimowHA)
+> adding real-time **position and zone** support. Fork releases are listed first;
+> upstream history follows.
+
+## 1.1.0+position.2
+
+- **Zone sensor attributes:** expose extra real-time location fields as attributes
+  on `sensor.<mower>_zone` — `task_delay`, `partition_ids`, `vehicle_state`,
+  `pose_time` — for use in templates and automations.
+- **New `examples/gate-automation/`:** a parameterized package that automatically
+  opens a gate so the mower can reach zones on the far side of the gate from its
+  dock, and closes it once docked. Includes a live position map card
+  (`navimow-map-card.js`) and a full `SETUP.md`.
+- **README:** added an Examples section.
+
+## 1.1.0+position.1
+
+- Initial position/zone fork. Subscribes to the `…/realtimeDate/location` MQTT
+  topic and decodes the pose / partition / task-delay messages, exposing
+  `sensor.<mower>_zone`, `_position_x`, `_position_y`, and `_heading`.
+  Self-contained — no changes to the stock `navimow-sdk` required.
+
+---
+
+## Upstream history
+
 ## [1.1.0](https://github.com/segwaynavimow/NavimowHA/compare/NavimowHA-v1.0.0...NavimowHA-v1.1.0) (2026-04-10)
 
 
