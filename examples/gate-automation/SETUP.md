@@ -124,6 +124,8 @@ automations while leaving the manual scripts/switch usable.
 - `sensor.garden_gate_status` — Closed / Open / Opening / Closing
 - `binary_sensor.navimow_gate_zone_required` — on when the target needs the gate
 - `binary_sensor.navimow_charging`, `binary_sensor.navimow_task_delayed`
+- `sensor.navimow_mowing_zone` — live physical zone (from `type:2`; works for "mow all")
+- `sensor.navimow_mow_route_progress` — route progress % (reaches 100 just before the physical finish)
 - scripts `navimow_gate_ensure_open` / `_ensure_closed`
 - three automations (open on gate-side zone, ensure-open while returning, close on dock)
 
@@ -140,6 +142,8 @@ cards:
       - { entity: sensor.navimow_current_zone, name: Mower target zone }
       - { entity: binary_sensor.navimow_charging, name: Charging }
       - { entity: binary_sensor.navimow_task_delayed, name: Mow delayed }
+      - { entity: sensor.navimow_mowing_zone, name: Mowing zone }
+      - { entity: sensor.navimow_mow_route_progress, name: Mow progress (route) }
   - type: horizontal-stack
     cards:
       - type: button
