@@ -58,8 +58,13 @@ by hand-sliding a magnet). If yours are inverted, flip the `off`/`on` checks in 
 
 Each mowing zone has a numeric partition id. Watch `sensor.<name>_zone` while the
 mower works each area (or send a "mow this zone" command per zone) and record which
-id is which. Note which zones are on the **far side of the gate** from the dock —
-those are the ones that require the gate.
+id is which. Note which zone(s) are on the **dock side** (no gate needed) — usually
+just the one containing the dock.
+
+> **"Mow all" note:** a full-property / "mow all" command reports **no zone** — the
+> sensor stays `unknown` the whole time. Only per-zone commands report a specific
+> id. The gate logic therefore treats anything that isn't a known dock-side zone
+> (including `unknown`) as gate-required, so "mow all" opens the gate too.
 
 ## Step 4 — Configure the package
 
@@ -74,9 +79,17 @@ Open `navimow_gate.yaml` and:
    - `binary_sensor.garden_gate_open_sensor`
 2. **Set your zones** in the two tables tagged `# EDIT ZONE MAP`:
    - the id → friendly-name map (display only), and
-   - `gate_zones` — the list of ids that require the gate, e.g. `['7', '19', '20']`.
+   - `no_gate_zones` — the **dock-side** zone ids that do NOT need the gate,
+     e.g. `['2']`. Everything else (front zones, and "mow all" / `unknown`) is
+     treated as gate-required.
 
 ## Step 5 — Install the package
+
+> Throughout this guide `<config>` means your **Home Assistant configuration
+> directory** — the folder that holds `configuration.yaml` (and `custom_components/`,
+> `packages/`, `www/`). It's `/config` on HA OS/Supervised and inside a Docker
+> container; on a Core/venv install it's usually `~/.homeassistant`. For Docker,
+> reach it with `docker cp <file> homeassistant:/config/...`.
 
 Put the file at `<config>/packages/navimow_gate.yaml`, and make sure
 `configuration.yaml` loads packages:

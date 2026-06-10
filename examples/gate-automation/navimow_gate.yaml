@@ -23,8 +23,10 @@
 #
 #  2) SET YOUR ZONES in the two tables tagged "# EDIT ZONE MAP" below:
 #       - the id -> friendly-name map (display only), and
-#       - the list of zone ids that REQUIRE passing through the gate
-#         (i.e. the zones on the far side of the gate from the dock).
+#       - the list of DOCK-SIDE zone ids that do NOT need the gate (usually
+#         just the backyard). Everything else -- front zones AND a "mow all"
+#         command, which reports no zone (sensor stays 'unknown') -- is then
+#         treated as gate-required.
 #
 #  ---------------------------------------------------------------------
 #  HOW IT WORKS
@@ -91,17 +93,57 @@ template:
              if (states('binary_sensor.garden_gate_closed_sensor') == 'on' and states('binary_sensor.garden_gate_open_sensor') == 'on')
              else 'Unknown') }}
 
+      # Live PHYSICAL mowing zone (fork's type:2 currentMowBoundary). Works for
+      # "mow all" too. Keep this names map IN SYNC with "Navimow current zone".
+      # (0 = transitioning / between boundaries.)
+      - name: "Navimow mowing zone"
+        unique_id: navimow_mowing_zone_name
+        icon: mdi:robot-mower
+        state: >
+          {% set names = {
+            '2': 'Backyard',
+            '7': 'Mikes Side',
+            '19': 'Frontyard',
+            '20': 'Party Side',
+            '0': 'Transitioning',
+            'unknown': 'None / idle',
+            'unavailable': 'Unavailable'
+          } %}
+          {% set z = states('sensor.peter_griffin_mowing_zone') %}
+          {{ names.get(z, z) }}
+
+      # Route progress 0-100% (fork's type:2 currentMowProgress / 100). NOTE:
+      # this is planned-ROUTE progress -- it reaches 100 shortly BEFORE the
+      # mower physically finishes, and is NOT the app's coverage %.
+      - name: "Navimow mow route progress"
+        unique_id: navimow_mow_route_progress
+        icon: mdi:progress-check
+        unit_of_measurement: "%"
+        state: >
+          {% set p = states('sensor.peter_griffin_mow_progress') | float(-1) %}
+          {{ (p / 100) | round(0) if p >= 0 else 'unknown' }}
+
   - binary_sensor:
-      # On when the mower's CURRENT TARGET zone requires the gate. This is
-      # the single place the gate logic decides "front vs back".
-      # EDIT ZONE MAP (gate-required): list the zone ids that are on the far
-      # side of the gate from the dock.
+      # On when the mower is ACTIVE and its target zone is NOT a known
+      # dock-side zone. This is the single place the gate logic decides
+      # whether the gate is needed.
+      #
+      # IMPORTANT: a "mow all" / full-property command reports NO zone at all
+      # (the zone sensor stays 'unknown'), while per-zone commands report the
+      # target zone. By treating "not a known dock-side zone" (incl. unknown)
+      # as gate-required, this works for BOTH: per-zone backyard (zone 2) does
+      # NOT open the gate; per-zone front zones and any "mow all" DO.
+      #
+      # EDIT ZONE MAP (no-gate zones): list ONLY the dock-side zone ids that
+      # do NOT require passing through the gate (usually just the backyard).
       - name: "Navimow gate zone required"
         unique_id: navimow_gate_zone_required
         icon: mdi:gate-arrow-right
         state: >-
-          {% set gate_zones = ['7', '19', '20'] %}
-          {{ states('sensor.peter_griffin_zone') in gate_zones }}
+          {% set no_gate_zones = ['2'] %}
+          {% set z = states('sensor.peter_griffin_zone') %}
+          {% set active = states('lawn_mower.peter_griffin') in ['mowing', 'returning'] %}
+          {{ active and z not in no_gate_zones }}
 
       # On when the mower reports the 'charging' status (the entity STATE shows
       # 'docked' while charging, but the raw status attribute distinguishes it).

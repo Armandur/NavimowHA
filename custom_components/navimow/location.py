@@ -6,9 +6,14 @@ payload (a JSON array, not a dict). This module decodes that topic so the
 integration can expose live position and the current mowing zone.
 
 Observed payload: a JSON array of objects keyed by ``type``:
-  type 1  pose   {postureX, postureY (meters), postureTheta (radians), vehicleState, time}
-  type 3  zone   {partitionIds: [int]}   -> which mapped partition the mower is in
-  type 4  delay  {taskDelay: bool}       -> rain / schedule delay
+  type 1  pose     {postureX, postureY (meters), postureTheta (radians), vehicleState, time}
+  type 2  progress {currentMowBoundary (live physical partition id), currentMowProgress
+                    (route progress 0-10000, reaches 10000 at completion), mapWorkPosition}
+  type 3  zone     {partitionIds: [int]}   -> the TARGET partition (set at task start;
+                    absent for a "mow all" command)
+  type 4  delay    {taskDelay: bool}       -> rain / schedule delay
+NOTE: type 3 = target zone (drives gate pre-open); type 2 currentMowBoundary = the
+live physical zone (updates only after the mower crosses). They are kept separate.
 Coordinates are a local Cartesian grid in METERS whose origin is ~the dock /
 RTK reference (NOT latitude/longitude).
 """
@@ -50,6 +55,16 @@ def parse_location_payload(
                 loc["vehicle_state"] = item["vehicleState"]
             if "time" in item:
                 loc["pose_time"] = item["time"]
+            changed = True
+        elif t == 2:
+            # Live physical-mowing progress. currentMowBoundary is the
+            # partition the mower is actually mowing now (works for "mow all"
+            # too); currentMowProgress is route progress (0-10000, hits 10000
+            # at completion -- planned-path progress, not area coverage %).
+            if "currentMowBoundary" in item:
+                loc["mow_boundary"] = item.get("currentMowBoundary")
+            if "currentMowProgress" in item:
+                loc["mow_progress"] = item.get("currentMowProgress")
             changed = True
         elif t == 3:
             pids = item.get("partitionIds")

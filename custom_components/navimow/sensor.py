@@ -74,6 +74,23 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
             else None
         ),
     ),
+    NavimowSensorEntityDescription(
+        key="mowing_zone",
+        name="Mowing zone",
+        icon="mdi:robot-mower",
+        value_fn=lambda c: (
+            loc.get("mow_boundary") if (loc := c.get_device_location()) else None
+        ),
+    ),
+    NavimowSensorEntityDescription(
+        key="mow_progress",
+        name="Mow progress",
+        icon="mdi:progress-check",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda c: (
+            loc.get("mow_progress") if (loc := c.get_device_location()) else None
+        ),
+    ),
 )
 
 
@@ -149,4 +166,6 @@ class NavimowSensor(CoordinatorEntity[NavimowCoordinator], SensorEntity):
             "task_delay": loc.get("task_delay"),
             "vehicle_state": loc.get("vehicle_state"),
             "pose_time": loc.get("pose_time"),
+            "mow_boundary": loc.get("mow_boundary"),
+            "mow_progress": loc.get("mow_progress"),
         }

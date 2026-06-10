@@ -4,6 +4,17 @@
 > adding real-time **position and zone** support. Fork releases are listed first;
 > upstream history follows.
 
+## 1.1.0+position.3
+
+- Decode `type:2` location messages: new `sensor.<mower>_mowing_zone` (the live
+  PHYSICAL partition the mower is on -- works for "mow all" too) and
+  `sensor.<mower>_mow_progress` (planned-route progress 0-10000, hits 10000 at
+  completion; not the app's coverage %). Also added as `mow_boundary` /
+  `mow_progress` attributes on the zone sensor.
+- Gate example: open logic now treats an unknown TARGET zone as gate-required
+  (a "mow all" command reports no zone), so full-property mows open the gate
+  too; config now lists the dock-side (no-gate) zones instead of front zones.
+
 ## 1.1.0+position.2
 
 - **Zone sensor attributes:** expose extra real-time location fields as attributes
