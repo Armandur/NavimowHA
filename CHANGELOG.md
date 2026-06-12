@@ -4,6 +4,23 @@
 > adding real-time **position and zone** support. Fork releases are listed first;
 > upstream history follows.
 
+## [1.2.0](https://github.com/pgoutsos/NavimowHA/compare/NavimowHA-v1.1.0...NavimowHA-v1.2.0) (2026-06-12)
+
+
+### Features
+
+* add danish translation ([2de5eab](https://github.com/pgoutsos/NavimowHA/commit/2de5eab0679b68bafc66cb61eff33f3de37c568d))
+* Add french translation ([303d3c8](https://github.com/pgoutsos/NavimowHA/commit/303d3c8187c48636ac23aec293dfcbd9300fc744))
+
+
+### Bug Fixes
+
+* **navimow:** Fix OAuth token expiration issue after MQTT disconnection ([26c8ed5](https://github.com/pgoutsos/NavimowHA/commit/26c8ed5bd7853afdb00c61ad27e2344ca8794e3e))
+* **navimow:** Fixed MQTT credential refresh and unload logic ([7381489](https://github.com/pgoutsos/NavimowHA/commit/738148937b92e659ee9c000a1308db5e389ebf22))
+* **navimow:** improve MQTT reconnection handling and entity availability ([c04ae31](https://github.com/pgoutsos/NavimowHA/commit/c04ae312f0685705215b8cfc31c1400d6c96a5e0))
+* **navimow:** Optimize re-authentication error handling, distinguishing between deterministic and transient failures ([cb2bd56](https://github.com/pgoutsos/NavimowHA/commit/cb2bd56eea8be91a8cded3e76dd74c5a5a68301e))
+* **navimow:** Optimizes MQTT connection keepalive and reconnection mechanisms ([0f38417](https://github.com/pgoutsos/NavimowHA/commit/0f384173283644e1a93798993e4152eaeb7f40b3))
+
 ## 1.1.0+position.3
 
 - Decode `type:2` location messages: new `sensor.<mower>_mowing_zone` (the live
