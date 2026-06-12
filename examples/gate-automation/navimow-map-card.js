@@ -67,6 +67,8 @@ class NavimowMapCard extends HTMLElement {
       overlay_image: null,
       overlay_opacity: 0.9,
       calibration: null,
+      straighten: true,   // draw the image upright (rotate the trail instead);
+                          // set false to keep the mower's coordinate frame
     }, config || {});
     // derive dock sensor names from the position sensors if not configured
     if (!this._config.dock_x_entity && /position_x/.test(this._config.x_entity))
@@ -145,6 +147,16 @@ class NavimowMapCard extends HTMLElement {
   _pxToM(px, py) {
     const c = this._cal;
     return [c.ar * px + c.ai * py + c.br, c.ai * px - c.ar * py + c.bi];
+  }
+
+  // meters -> image pixel (inverse calibration): q = (m - b) / a
+  _mToPx(mx, my) {
+    const c = this._cal;
+    const wr = mx - c.br, wi = my - c.bi;
+    const den = c.ar * c.ar + c.ai * c.ai;
+    const qr = (wr * c.ar + wi * c.ai) / den;
+    const qi = (wi * c.ar - wr * c.ai) / den;
+    return [qr, -qi]; // flip back to image y-down
   }
 
   _num(entity) {
@@ -310,34 +322,50 @@ class NavimowMapCard extends HTMLElement {
       return;
     }
 
+    // Working space: with an overlay (and straighten on, the default) we draw
+    // in IMAGE PIXEL space so the image stays upright and the trail rotates;
+    // otherwise in mower meter space (y up).
+    const upright = overlayReady && c.straighten !== false;
+    const M2W = upright ? ((mx, my) => this._mToPx(mx, my)) : ((mx, my) => [mx, my]);
+
     // view extents: trail + dock + live pos (+ image corners when present)
-    const xs = pts.map(p => p[0]).concat([dock[0]]);
-    const ys = pts.map(p => p[1]).concat([dock[1]]);
-    if (x !== null) xs.push(x);
-    if (y !== null) ys.push(y);
+    const wpts = pts.map(p => M2W(p[0], p[1]));
+    const wdock = M2W(dock[0], dock[1]);
+    const xs = wpts.map(p => p[0]).concat([wdock[0]]);
+    const ys = wpts.map(p => p[1]).concat([wdock[1]]);
+    let wpos = null;
+    if (x !== null && y !== null) {
+      wpos = M2W(x, y);
+      xs.push(wpos[0]); ys.push(wpos[1]);
+    }
     if (overlayReady) {
       const { w, h } = this._imgMeta;
-      for (const [px, py] of [[0, 0], [w, 0], [0, h], [w, h]]) {
-        const m = this._pxToM(px, py);
-        xs.push(m[0]); ys.push(m[1]);
+      for (const [ix, iy] of [[0, 0], [w, 0], [0, h], [w, h]]) {
+        const p = upright ? [ix, iy] : this._pxToM(ix, iy);
+        xs.push(p[0]); ys.push(p[1]);
       }
     }
     const minX = Math.min(...xs), maxX = Math.max(...xs);
     const minY = Math.min(...ys), maxY = Math.max(...ys);
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    let size = Math.max(maxX - minX, maxY - minY, 2);
+    let size = Math.max(maxX - minX, maxY - minY, upright ? 50 : 2);
     size += size * (overlayReady ? 0.04 : 0.24); // padding
     const x0 = cx - size / 2, y0 = cy - size / 2;
     const k = V / size;
-    const tx = mx => (mx - x0) * k;
-    const ty = my => V - (my - y0) * k; // flip Y (math up -> screen down)
+    const tx = wx => (wx - x0) * k;
+    // image pixel y already points down; meter y points up and needs the flip
+    const ty = upright ? (wy => (wy - y0) * k) : (wy => V - (wy - y0) * k);
     svg.setAttribute('viewBox', `0 0 ${V} ${V}`);
 
     let s = '';
-    if (overlayReady) {
-      // compose pixel->meter (calibration) with meter->screen (view):
-      //   sx = k*(ar*px + ai*py + br - x0)
-      //   sy = V - k*(ai*px - ar*py + bi - y0)
+    if (overlayReady && upright) {
+      // axis-aligned image
+      const { w, h } = this._imgMeta;
+      s += `<image href="${c.overlay_image}" x="${tx(0).toFixed(1)}" y="${ty(0).toFixed(1)}"
+              width="${(w * k).toFixed(1)}" height="${(h * k).toFixed(1)}"
+              opacity="${c.overlay_opacity}" preserveAspectRatio="none"/>`;
+    } else if (overlayReady) {
+      // mower-frame view: compose pixel->meter (calibration) with meter->screen
       const { ar, ai, br, bi } = this._cal;
       const A = k * ar, B = -k * ai, C = k * ai, D = k * ar;
       const E = k * (br - x0), F = V - k * (bi - y0);
@@ -345,21 +373,33 @@ class NavimowMapCard extends HTMLElement {
               transform="matrix(${A} ${B} ${C} ${D} ${E} ${F})"
               opacity="${c.overlay_opacity}" preserveAspectRatio="none"/>`;
     }
-    if (pts.length > 1) {
-      const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${tx(p[0]).toFixed(1)} ${ty(p[1]).toFixed(1)}`).join(' ');
+    if (wpts.length > 1) {
+      const d = wpts.map((p, i) => `${i === 0 ? 'M' : 'L'}${tx(p[0]).toFixed(1)} ${ty(p[1]).toFixed(1)}`).join(' ');
       s += `<path d="${d}" fill="none" stroke="var(--primary-color)" stroke-width="4" stroke-opacity="0.55" stroke-linejoin="round" stroke-linecap="round"/>`;
     }
     // dock marker (configured > auto-learned > origin fallback)
-    s += `<g transform="translate(${tx(dock[0]).toFixed(1)},${ty(dock[1]).toFixed(1)})">
+    s += `<g transform="translate(${tx(wdock[0]).toFixed(1)},${ty(wdock[1]).toFixed(1)})">
             <circle r="10" fill="none" stroke="${overlayReady ? 'white' : 'var(--secondary-text-color)'}" stroke-width="3"/>
             <text y="-16" font-size="26" text-anchor="middle" fill="${overlayReady ? 'white' : 'var(--secondary-text-color)'}"${overlayReady ? ' style="paint-order:stroke" stroke="rgba(0,0,0,0.6)" stroke-width="4"' : ''}>dock</text>
           </g>`;
     // mower marker + heading arrow
-    if (x !== null && y !== null) {
-      const px = tx(x), py = ty(y);
+    if (wpos !== null) {
+      const px = tx(wpos[0]), py = ty(wpos[1]);
       if (headingDeg !== null) {
         const rad = headingDeg * Math.PI / 180;
-        const ax = px + Math.cos(rad) * 34, ay = py - Math.sin(rad) * 34;
+        // screen-space unit direction of the mower's heading
+        let ux = Math.cos(rad), uy = -Math.sin(rad); // meter frame (y flip)
+        if (upright) {
+          // rotate the heading vector into image space via the inverse
+          // calibration's linear part (y flipped back to screen-down)
+          const { ar, ai } = this._cal;
+          const den = ar * ar + ai * ai;
+          const dpr = (Math.cos(rad) * ar + Math.sin(rad) * ai) / den;
+          const dpi = (Math.sin(rad) * ar - Math.cos(rad) * ai) / den;
+          const n = Math.hypot(dpr, dpi) || 1;
+          ux = dpr / n; uy = -dpi / n;
+        }
+        const ax = px + ux * 34, ay = py + uy * 34;
         s += `<line x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="var(--accent-color, #ff9800)" stroke-width="7" stroke-linecap="round"/>`;
       }
       s += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="15" fill="var(--accent-color, #ff9800)" stroke="white" stroke-width="3"/>`;

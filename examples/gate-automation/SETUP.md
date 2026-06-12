@@ -208,9 +208,12 @@ so the image doesn't need to be north-up):
        px: [220, 410]       # landmark: pixel [x, y]
    ```
 
-The view auto-fits to the whole image. If the overlay looks mirrored or
-rotated wrong, a pixel coordinate was probably read y-up — pixel y counts
-DOWN from the image's top-left.
+The view auto-fits to the whole image, which is drawn upright — the mower's
+trail and heading are rotated into the image's frame (the mower's RTK
+coordinate frame is usually not north-aligned). Set `straighten: false` to
+draw in the mower's frame instead (tilted image). If the overlay looks
+mirrored or rotated wrong, a pixel coordinate was probably read y-up — pixel
+y counts DOWN from the image's top-left.
 
 ### Dock marker
 
