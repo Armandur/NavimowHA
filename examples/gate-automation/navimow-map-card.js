@@ -3,7 +3,9 @@
  *
  * A self-contained Lovelace custom card. Plots the mower's local (x,y) meter
  * coordinates with a heading arrow and a fading trail, auto-fitting the view to
- * wherever it has been. Origin (0,0) ≈ the dock. No external dependencies.
+ * wherever it has been. Auto-learns the dock position by averaging the mower's
+ * coordinates while the status entity reports docked/charging (persisted in
+ * localStorage per x_entity). No external dependencies.
  *
  * Install:
  *   1. Put this file at /config/www/navimow-map-card.js
@@ -20,6 +22,15 @@
  *   status_entity: lawn_mower.peter_griffin
  *   battery_entity:           # e.g. sensor.peter_griffin_battery (optional)
  *   trail_length: 800         # max trail points kept
+ *   dock_x_entity:            # integration dock sensors (auto-derived from
+ *   dock_y_entity:            #   x_entity/y_entity names if not set)
+ *   dock_x:                   # manual dock override (meters); disables auto-learn
+ *   dock_y:                   #   (both must be set)
+ *   dock_samples: 25          # rolling samples averaged while docked (fallback)
+ *
+ * Dock position priority: dock_x/dock_y config > integration dock sensors
+ * (sensor.*_dock_x/_dock_y, persisted server-side by the integration) >
+ * locally learned average while docked (localStorage) > origin (0,0).
  */
 class NavimowMapCard extends HTMLElement {
   setConfig(config) {
@@ -32,9 +43,26 @@ class NavimowMapCard extends HTMLElement {
       status_entity: 'lawn_mower.peter_griffin',
       battery_entity: null,
       trail_length: 800,
+      dock_x_entity: null,
+      dock_y_entity: null,
+      dock_x: null,
+      dock_y: null,
+      dock_samples: 25,
     }, config || {});
+    // derive dock sensor names from the position sensors if not configured
+    if (!this._config.dock_x_entity && /position_x/.test(this._config.x_entity))
+      this._config.dock_x_entity = this._config.x_entity.replace('position_x', 'dock_x');
+    if (!this._config.dock_y_entity && /position_y/.test(this._config.y_entity))
+      this._config.dock_y_entity = this._config.y_entity.replace('position_y', 'dock_y');
     this._trail = [];
     this._lastKey = null;
+    this._dock = null;       // learned [x, y], meters
+    this._dockBuf = [];      // rolling samples while docked
+    this._dockKey = 'navimow-map-card-dock:' + this._config.x_entity;
+    try {
+      const v = JSON.parse(localStorage.getItem(this._dockKey));
+      if (Array.isArray(v) && isFinite(v[0]) && isFinite(v[1])) this._dock = v;
+    } catch (e) { /* storage unavailable — auto-learn still works per-session */ }
     this.innerHTML = `
       <ha-card>
         <div class="nm-hdr"></div>
@@ -82,6 +110,29 @@ class NavimowMapCard extends HTMLElement {
       }
     }
 
+    // integration dock sensors (server-side learned, persisted in HA)
+    const sensorDockX = this._num(c.dock_x_entity);
+    const sensorDockY = this._num(c.dock_y_entity);
+    const haveSensorDock = sensorDockX !== null && sensorDockY !== null;
+
+    // local auto-learn fallback: average position while docked/charging
+    // (skipped when the integration provides dock sensors)
+    if (!haveSensorDock && (c.dock_x === null || c.dock_y === null)) {
+      const docked = /dock|charg/i.test(status);
+      if (docked && x !== null && y !== null) {
+        this._dockBuf.push([x, y]);
+        if (this._dockBuf.length > c.dock_samples) this._dockBuf.shift();
+        const n = this._dockBuf.length;
+        this._dock = [
+          this._dockBuf.reduce((a, p) => a + p[0], 0) / n,
+          this._dockBuf.reduce((a, p) => a + p[1], 0) / n,
+        ];
+        try { localStorage.setItem(this._dockKey, JSON.stringify(this._dock)); } catch (e) {}
+      } else if (!docked && this._dockBuf.length) {
+        this._dockBuf = [];
+      }
+    }
+
     this.querySelector('.nm-hdr').textContent = c.title;
     const parts = [
       `Zone: <b>${zone}</b>`,
@@ -91,10 +142,15 @@ class NavimowMapCard extends HTMLElement {
     if (batt !== null) parts.push(`Battery: <b>${batt}%</b>`);
     this.querySelector('.nm-ftr').innerHTML = parts.join('');
 
-    this._draw(x, y, headingDeg);
+    const dock = (c.dock_x !== null && c.dock_y !== null)
+      ? [c.dock_x, c.dock_y]
+      : haveSensorDock
+        ? [sensorDockX, sensorDockY]
+        : (this._dock || [0, 0]);
+    this._draw(x, y, headingDeg, dock);
   }
 
-  _draw(x, y, headingDeg) {
+  _draw(x, y, headingDeg, dock) {
     const svg = this.querySelector('svg.nm-map');
     const pts = this._trail;
     const V = 1000;
@@ -105,8 +161,8 @@ class NavimowMapCard extends HTMLElement {
       return;
     }
 
-    const xs = pts.map(p => p[0]).concat([0]);
-    const ys = pts.map(p => p[1]).concat([0]);
+    const xs = pts.map(p => p[0]).concat([dock[0]]);
+    const ys = pts.map(p => p[1]).concat([dock[1]]);
     if (x !== null) xs.push(x);
     if (y !== null) ys.push(y);
     const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -124,8 +180,8 @@ class NavimowMapCard extends HTMLElement {
       const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${tx(p[0]).toFixed(1)} ${ty(p[1]).toFixed(1)}`).join(' ');
       s += `<path d="${d}" fill="none" stroke="var(--primary-color)" stroke-width="4" stroke-opacity="0.55" stroke-linejoin="round" stroke-linecap="round"/>`;
     }
-    // dock / origin marker
-    s += `<g transform="translate(${tx(0).toFixed(1)},${ty(0).toFixed(1)})">
+    // dock marker (configured > auto-learned > origin fallback)
+    s += `<g transform="translate(${tx(dock[0]).toFixed(1)},${ty(dock[1]).toFixed(1)})">
             <circle r="10" fill="none" stroke="var(--secondary-text-color)" stroke-width="3"/>
             <text y="-16" font-size="26" text-anchor="middle" fill="var(--secondary-text-color)">dock</text>
           </g>`;

@@ -21,7 +21,11 @@ docked. Built around four pieces:
 - **Home Assistant 2026.1.0+** with the Navimow integration installed from the
   position/zone fork: <https://github.com/pgoutsos/NavimowHA>. After setup you'll
   have, per mower: `lawn_mower.<name>`, `sensor.<name>_zone`,
-  `sensor.<name>_position_x/_y`, `sensor.<name>_heading`.
+  `sensor.<name>_position_x/_y`, `sensor.<name>_heading`, and (v1.1.0+position.4)
+  `sensor.<name>_dock_x/_dock_y` — the dock position, auto-learned by averaging
+  the mower's pose while docked/charging and persisted across HA restarts. The
+  map card uses these to place the dock marker; before the first docking event
+  they're `unknown` and the card falls back to local learning / the origin.
 - A **gate opener controllable from HA as a switch**. Any integration works as
   long as turning the switch *on* pulses the opener. (LocalTuya, ESPHome, Shelly…)
 - **Two contact sensors**, one mounted so it reads at the gate's fully-**closed**

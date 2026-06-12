@@ -24,6 +24,7 @@ from .const import (
     MQTT_STALE_SECONDS,
     UPDATE_INTERVAL,
 )
+from .location import DOCKED_STATES, update_dock_estimate
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_state: DeviceStateMessage | None = None
         self._last_attributes: DeviceAttributesMessage | None = None
         self._last_location: dict[str, Any] | None = None
+        self._dock: dict[str, Any] | None = None  # learned {"x","y","n"}
         self._last_mqtt_update: float | None = None
         self._last_http_fetch: float | None = None
         self._last_data_source: str | None = None
@@ -216,7 +218,20 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if location.get("device_id") not in (None, self.device.id):
             return
         self._last_location = location
+        self._maybe_learn_dock(location)
         self.async_set_updated_data(self._build_data())
+
+    def _maybe_learn_dock(self, location: dict) -> None:
+        """Average pose samples into the dock estimate while docked/charging."""
+        state = self._last_state
+        status = (state.state or "").lower() if state else ""
+        x, y = location.get("x"), location.get("y")
+        if status in DOCKED_STATES and x is not None and y is not None:
+            self._dock = update_dock_estimate(self._dock, x, y)
+
+    def get_dock_position(self) -> dict | None:
+        """Learned dock position {"x","y","n"}, or None if never seen docked."""
+        return self._dock
 
     def get_device_location(self) -> dict | None:
         return self.data.get("location")

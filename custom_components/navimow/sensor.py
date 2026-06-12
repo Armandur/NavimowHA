@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
@@ -83,6 +84,24 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
         ),
     ),
     NavimowSensorEntityDescription(
+        key="dock_x",
+        name="Dock X",
+        native_unit_of_measurement="m",
+        icon="mdi:home-map-marker",
+        value_fn=lambda c: (
+            round(d["x"], 2) if (d := c.get_dock_position()) and d.get("n") else None
+        ),
+    ),
+    NavimowSensorEntityDescription(
+        key="dock_y",
+        name="Dock Y",
+        native_unit_of_measurement="m",
+        icon="mdi:home-map-marker",
+        value_fn=lambda c: (
+            round(d["y"], 2) if (d := c.get_dock_position()) and d.get("n") else None
+        ),
+    ),
+    NavimowSensorEntityDescription(
         key="mow_progress",
         name="Mow progress",
         icon="mdi:progress-check",
@@ -108,8 +127,13 @@ async def async_setup_entry(
     for device in devices:
         coordinator = coordinators[device.id]
         for description in SENSOR_DESCRIPTIONS:
+            cls = (
+                NavimowDockSensor
+                if description.key in ("dock_x", "dock_y")
+                else NavimowSensor
+            )
             entities.append(
-                NavimowSensor(
+                cls(
                     coordinator=coordinator,
                     entity_description=description,
                 )
@@ -168,4 +192,38 @@ class NavimowSensor(CoordinatorEntity[NavimowCoordinator], SensorEntity):
             "pose_time": loc.get("pose_time"),
             "mow_boundary": loc.get("mow_boundary"),
             "mow_progress": loc.get("mow_progress"),
+        }
+
+
+class NavimowDockSensor(NavimowSensor, RestoreSensor):
+    """Dock position sensor that survives HA restarts.
+
+    The dock estimate is learned in-memory by the coordinator while the mower
+    is docked/charging. After a restart, the previously learned value is
+    restored from HA's state storage and shown until live samples replace it.
+    """
+
+    _restored_value: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if (data := await self.async_get_last_sensor_data()) is not None:
+            try:
+                self._restored_value = float(data.native_value)
+            except (TypeError, ValueError):
+                self._restored_value = None
+
+    @property
+    def native_value(self) -> Any:
+        live = self.entity_description.value_fn(self.coordinator)
+        return live if live is not None else self._restored_value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        d = self.coordinator.get_dock_position()
+        return {
+            "samples": (d or {}).get("n", 0),
+            "source": "live" if d and d.get("n") else (
+                "restored" if self._restored_value is not None else "none"
+            ),
         }
