@@ -98,7 +98,12 @@ class NavimowMapCard extends HTMLElement {
     const y = this._num(c.y_entity);
     const headingDeg = this._num(c.heading_entity);
     const zone = this._hass.states[c.zone_entity] ? this._hass.states[c.zone_entity].state : '—';
-    const status = this._hass.states[c.status_entity] ? this._hass.states[c.status_entity].state : '—';
+    const stObj = this._hass.states[c.status_entity];
+    const status = stObj ? stObj.state : '—';
+    // Raw mower status for dock learning. The lawn_mower entity STATE maps
+    // 'idle' to 'docked' (activity), so a mower stopped mid-lawn would look
+    // docked and poison the dock estimate — prefer the raw 'status' attribute.
+    const rawStatus = stObj ? ((stObj.attributes && stObj.attributes.status) || stObj.state) : '';
     const batt = c.battery_entity ? this._num(c.battery_entity) : null;
 
     if (x !== null && y !== null) {
@@ -118,7 +123,7 @@ class NavimowMapCard extends HTMLElement {
     // local auto-learn fallback: average position while docked/charging
     // (skipped when the integration provides dock sensors)
     if (!haveSensorDock && (c.dock_x === null || c.dock_y === null)) {
-      const docked = /dock|charg/i.test(status);
+      const docked = /^(docked|charging)$/i.test(rawStatus);
       if (docked && x !== null && y !== null) {
         this._dockBuf.push([x, y]);
         if (this._dockBuf.length > c.dock_samples) this._dockBuf.shift();
