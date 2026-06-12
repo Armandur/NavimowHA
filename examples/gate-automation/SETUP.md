@@ -162,7 +162,16 @@ cards:
 
 ## Optional — live position map card
 
-`navimow-map-card.js` plots the mower's live position, heading, and trail.
+`navimow-map-card.js` plots the mower's live position, heading, and the path of
+the **current mowing session** — optionally over a satellite image of your
+property.
+
+The session path is rebuilt from Home Assistant's recorder each time the card
+loads (it finds the most recent docked → mowing transition and replays the
+position history since), so it survives page reloads, navigating away, and
+shows the same path on every device. It resets automatically when a new session
+starts. Requires the recorder (on by default) to be recording the position
+sensors; if it isn't, the card falls back to a live-only trail.
 
 1. Copy it to `<config>/www/navimow-map-card.js`.
 2. Settings → Dashboards → ⋮ → Resources → add `/local/navimow-map-card.js?v=1`
@@ -170,6 +179,38 @@ cards:
    when you update the file).
 3. Add a card: `type: custom:navimow-map-card` (override `x_entity`, `y_entity`,
    `heading_entity`, `zone_entity` if your entity IDs differ from the defaults).
+
+### Satellite / aerial overlay
+
+The card can draw the mower on top of an image of your property. You need the
+image plus **two calibration points** (spots whose mower-meter coordinates AND
+image-pixel coordinates you know — they determine scale, rotation, and offset,
+so the image doesn't need to be north-up):
+
+1. Take a satellite screenshot of your property (Google Maps, county GIS, or a
+   drone photo), crop it, and save it to `<config>/www/yard.png`.
+2. **Point 1 — the dock.** Its meter coordinates are the `dock_x`/`dock_y`
+   sensors; find the dock in the image and note its pixel x/y (most image
+   viewers show pixel coordinates; macOS Preview: Tools → Show Inspector).
+3. **Point 2 — any landmark** as far from the dock as practical. Park the mower
+   on it (or watch live during a mow) and read `position_x`/`position_y`, then
+   note the same spot's pixel coordinates in the image.
+4. Configure the card:
+
+   ```yaml
+   type: custom:navimow-map-card
+   overlay_image: /local/yard.png
+   overlay_opacity: 0.9
+   calibration:
+     - m: [0.0, 0.0]        # dock: [dock_x, dock_y] in meters
+       px: [512, 800]       # dock: pixel [x, y] in the image
+     - m: [12.4, -3.1]      # landmark: [position_x, position_y]
+       px: [220, 410]       # landmark: pixel [x, y]
+   ```
+
+The view auto-fits to the whole image. If the overlay looks mirrored or
+rotated wrong, a pixel coordinate was probably read y-up — pixel y counts
+DOWN from the image's top-left.
 
 ### Dock marker
 
