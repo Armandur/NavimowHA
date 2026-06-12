@@ -171,6 +171,29 @@ cards:
 3. Add a card: `type: custom:navimow-map-card` (override `x_entity`, `y_entity`,
    `heading_entity`, `zone_entity` if your entity IDs differ from the defaults).
 
+### Dock marker
+
+The mower's coordinate origin is its RTK/mapping anchor, which is *near* but not
+always *at* the dock — so the card no longer assumes dock = (0,0). The dock
+marker position is resolved in this order:
+
+1. **Manual override** — set `dock_x:` / `dock_y:` (meters) in the card config.
+2. **Integration dock sensors** (fork v1.1.0+position.4+) —
+   `sensor.<name>_dock_x/_dock_y`, learned server-side by averaging the mower's
+   pose while it reports docked/charging, persisted across HA restarts. The card
+   derives these entity names from `x_entity`/`y_entity` automatically; set
+   `dock_x_entity:` / `dock_y_entity:` if yours differ.
+3. **Local fallback** (older fork versions) — the card learns the same average
+   in the browser and keeps it in localStorage (per browser, so each device
+   learns separately).
+4. **Origin (0,0)** until the mower has docked once.
+
+The sensors read `unknown` until the first docked/charging pose sample after
+upgrading; the marker corrects itself the next time the mower docks. The
+sensors' `samples` / `source` attributes show whether live learning is working —
+if `samples` stays 0 while docked, your mower stops streaming pose at the dock
+(please report this).
+
 ---
 
 ## Notes & tuning

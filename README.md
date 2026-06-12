@@ -27,10 +27,13 @@ mower is active):
 
 | Entity | Meaning |
 | --- | --- |
-| `sensor.<mower>_zone` | Current mapped partition id — i.e. which zone the mower is in |
-| `sensor.<mower>_position_x` | X position in meters (local grid; origin ≈ the dock / RTK reference) |
+| `sensor.<mower>_zone` | Target partition id — the zone the current task is headed for (set at task start; empty for "mow all") |
+| `sensor.<mower>_position_x` | X position in meters (local grid; origin = the RTK/mapping reference, usually *near* the dock) |
 | `sensor.<mower>_position_y` | Y position in meters |
 | `sensor.<mower>_heading` | Mower orientation in degrees (0–360) |
+| `sensor.<mower>_mowing_zone` | Partition id the mower is *physically* mowing right now (works for "mow all" too) |
+| `sensor.<mower>_mow_progress` | Planned-route progress for the current zone, 0–10000 (10000 = zone complete; not the app's coverage %) |
+| `sensor.<mower>_dock_x` / `_dock_y` | Dock position in meters — auto-learned by averaging the mower's pose while docked/charging; survives restarts. `unknown` until the mower has docked once. Used by the example map card to place the dock marker (the coordinate origin is **not** reliably the dock) |
 
 These unlock zone-aware and position-aware automations — for example opening a
 gate when the mower crosses between zones, geofencing, or live mapping. The
@@ -93,10 +96,14 @@ After setup you should see:
 
 - A `lawn_mower` entity (start / pause / dock)
 - A battery `sensor`
-- `zone`, `position_x`, `position_y`, and `heading` sensors (this fork)
+- `zone`, `position_x`, `position_y`, `heading`, `mowing_zone`, `mow_progress`,
+  `dock_x`, and `dock_y` sensors (this fork)
 
 The position/zone sensors show `unknown` while docked and begin updating once
-the mower starts moving.
+the mower starts moving. The dock sensors are the opposite: they learn (and
+refine) the dock position *while* the mower sits docked/charging, keep their
+value across restarts, and read `unknown` only until the first docking after
+install — their `samples`/`source` attributes show the learning state.
 
 See the upstream [Getting Started](https://github.com/segwaynavimow/NavimowHA/wiki/Getting-Started)
 guide for general setup.
