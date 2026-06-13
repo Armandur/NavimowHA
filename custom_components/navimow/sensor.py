@@ -105,9 +105,11 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
         key="mow_progress",
         name="Mow progress",
         icon="mdi:progress-check",
+        native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda c: (
-            loc.get("mow_progress") if (loc := c.get_device_location()) else None
+            (loc.get("mow_progress") or 0) / 100
+            if (loc := c.get_device_location()) else None
         ),
     ),
 )
