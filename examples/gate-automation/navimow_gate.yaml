@@ -65,6 +65,13 @@ input_boolean:
     name: Navimow gate interlock holds the mower
     icon: mdi:pause-octagon
 
+  # Toggle ON before opening the gate manually (hardwired button or dashboard)
+  # when you don't want the automation to close it behind you.
+  # Auto-cleared when the mower starts mowing so it can't be forgotten.
+  navimow_gate_manual_open:
+    name: Navimow gate - override keep open
+    icon: mdi:gate-open
+
 input_text:
   # What the interlock should do to resume the mower ('start_mowing' or 'dock').
   navimow_gate_resume_action:
@@ -437,6 +444,9 @@ automation:
       - condition: state
         entity_id: input_boolean.navimow_gate_automation
         state: "on"
+      - condition: state
+        entity_id: input_boolean.navimow_gate_manual_open
+        state: "off"
       # Skip if already fully closed.
       - condition: template
         value_template: "{{ not is_state('binary_sensor.garden_gate_closed_steady','off') }}"
@@ -595,6 +605,9 @@ automation:
       - condition: state
         entity_id: binary_sensor.navimow_in_transit
         state: "off"
+      - condition: state
+        entity_id: input_boolean.navimow_gate_manual_open
+        state: "off"
       - condition: template
         value_template: "{{ not is_state('binary_sensor.garden_gate_closed_steady','off') }}"
     action:
@@ -685,3 +698,21 @@ automation:
           - service: lawn_mower.start_mowing
             target:
               entity_id: lawn_mower.peter_griffin       # CHANGE: your mower
+
+  # Auto-clear the manual-open hold when a mow starts, so it can't be
+  # forgotten and accidentally suppress the next post-mow gate close.
+  - id: navimow_gate_clear_manual_open_on_mow
+    alias: "Navimow Gate - Clear manual open hold when mowing starts"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: lawn_mower.peter_griffin   # CHANGE: your mower
+        to: "mowing"
+    condition:
+      - condition: state
+        entity_id: input_boolean.navimow_gate_manual_open
+        state: "on"
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.navimow_gate_manual_open

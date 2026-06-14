@@ -124,6 +124,7 @@ automations while leaving the manual scripts/switch usable.
 ## What gets created
 
 - `input_boolean.navimow_gate_automation` — master enable
+- `input_boolean.navimow_gate_manual_open` — override to prevent automated gate closing (both close-on-dock and close-retry respect this; auto-clears when a new mow starts)
 - `sensor.navimow_current_zone` — current target zone, friendly name
 - `sensor.garden_gate_status` — Closed / Open / Opening / Closing
 - `binary_sensor.navimow_gate_zone_required` — on when the target needs the gate
@@ -140,9 +141,11 @@ type: vertical-stack
 cards:
   - type: entities
     title: Garden Gate
+    show_header_toggle: false
     entities:
       - { entity: sensor.garden_gate_status, name: Gate }
       - { entity: input_boolean.navimow_gate_automation, name: Automation enabled }
+      - { entity: input_boolean.navimow_gate_manual_open, name: Prevent automation from closing gate }
       - { entity: sensor.navimow_current_zone, name: Mower target zone }
       - { entity: binary_sensor.navimow_charging, name: Charging }
       - { entity: binary_sensor.navimow_task_delayed, name: Mow delayed }
