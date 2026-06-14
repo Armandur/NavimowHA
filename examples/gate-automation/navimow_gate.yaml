@@ -395,17 +395,28 @@ automation:
       - platform: state
         entity_id: lawn_mower.peter_griffin   # CHANGE: your mower
         to: "mowing"
+        id: mowing_start
     condition:
       - condition: state
         entity_id: input_boolean.navimow_gate_automation
         state: "on"
+    action:
+      # When triggered by the mowing state change, wait for the type:3 MQTT
+      # message carrying partition_ids to arrive before checking gate_zone_required.
+      # Without this delay, partition_ids is briefly null/empty at task start,
+      # which navimow_gate_zone_required treats as gate-required (mow-all safety),
+      # causing a spurious open on backyard-only sessions.
+      - if:
+          - condition: trigger
+            id: mowing_start
+        then:
+          - delay: "00:00:15"
       - condition: state
         entity_id: binary_sensor.navimow_gate_zone_required
         state: "on"
       # Skip if already fully open.
       - condition: template
         value_template: "{{ not is_state('binary_sensor.garden_gate_open_steady','off') }}"
-    action:
       - service: script.navimow_gate_ensure_open
 
   - id: navimow_gate_open_on_returning
@@ -420,6 +431,14 @@ automation:
     condition:
       - condition: state
         entity_id: input_boolean.navimow_gate_automation
+        state: "on"
+      # Only open if this session actually needs the gate. gate_zone_required
+      # includes 'returning' in its active check, so it stays on while
+      # returning from a gate-side session and is off for backyard-only returns.
+      # This prevents a spurious open when the mower finishes a backyard-only
+      # mow and transitions to 'returning'.
+      - condition: state
+        entity_id: binary_sensor.navimow_gate_zone_required
         state: "on"
       - condition: template
         value_template: "{{ not is_state('binary_sensor.garden_gate_open_steady','off') }}"
