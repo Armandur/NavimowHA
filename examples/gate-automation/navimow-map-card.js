@@ -92,7 +92,10 @@ class NavimowMapCard extends HTMLElement {
     this.innerHTML = `
       <ha-card>
         <div class="nm-hdr"></div>
-        <div class="nm-wrap"><svg class="nm-map" preserveAspectRatio="xMidYMid meet"></svg></div>
+        <div class="nm-wrap">
+          <svg class="nm-map" preserveAspectRatio="xMidYMid meet"></svg>
+          <svg class="nm-mwr" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
         <div class="nm-ftr"></div>
       </ha-card>
       <style>
@@ -100,7 +103,10 @@ class NavimowMapCard extends HTMLElement {
         .nm-hdr { font-weight: 600; margin-bottom: 6px; }
         .nm-wrap { position: relative; width: 100%; aspect-ratio: 1 / 1;
           background: var(--secondary-background-color); border-radius: 8px; overflow: hidden; }
-        svg.nm-map { width: 100%; height: 100%; display: block; }
+        svg.nm-map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
+        svg.nm-mwr { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+          display: block; pointer-events: none; }
+        .nm-mwr-grp { transition: transform 1.8s linear; }
         .nm-ftr { margin-top: 8px; font-size: 0.9em; color: var(--secondary-text-color);
           display: flex; gap: 14px; flex-wrap: wrap; }
         .nm-ftr b { color: var(--primary-text-color); }
@@ -299,6 +305,7 @@ class NavimowMapCard extends HTMLElement {
 
   _draw(x, y, headingDeg, dock) {
     const svg = this.querySelector('svg.nm-map');
+    const mwrSvg = this.querySelector('svg.nm-mwr');
     const c = this._config;
     const pts = this._trail;
     const V = 1000;
@@ -356,6 +363,7 @@ class NavimowMapCard extends HTMLElement {
     // image pixel y already points down; meter y points up and needs the flip
     const ty = upright ? (wy => (wy - y0) * k) : (wy => V - (wy - y0) * k);
     svg.setAttribute('viewBox', `0 0 ${V} ${V}`);
+    mwrSvg.setAttribute('viewBox', `0 0 ${V} ${V}`);
 
     let s = '';
     if (overlayReady && upright) {
@@ -382,16 +390,20 @@ class NavimowMapCard extends HTMLElement {
             <circle r="10" fill="none" stroke="${overlayReady ? 'white' : 'var(--secondary-text-color)'}" stroke-width="3"/>
             <text y="-16" font-size="26" text-anchor="middle" fill="${overlayReady ? 'white' : 'var(--secondary-text-color)'}"${overlayReady ? ' style="paint-order:stroke" stroke="rgba(0,0,0,0.6)" stroke-width="4"' : ''}>dock</text>
           </g>`;
-    // mower marker + heading arrow
+    svg.innerHTML = s;
+
+    // Mower marker lives in the persistent overlay SVG so CSS transition survives
+    // the main SVG's innerHTML rebuild. The group's transform is transitioned
+    // (1.8s linear, matching the ~2s MQTT position interval) for smooth movement.
     if (wpos !== null) {
       const px = tx(wpos[0]), py = ty(wpos[1]);
+
+      // Build heading arrow content (relative to marker centre, no offset)
+      let mwrInner = '';
       if (headingDeg !== null) {
         const rad = headingDeg * Math.PI / 180;
-        // screen-space unit direction of the mower's heading
-        let ux = Math.cos(rad), uy = -Math.sin(rad); // meter frame (y flip)
+        let ux = Math.cos(rad), uy = -Math.sin(rad);
         if (upright) {
-          // rotate the heading vector into image space via the inverse
-          // calibration's linear part (y flipped back to screen-down)
           const { ar, ai } = this._cal;
           const den = ar * ar + ai * ai;
           const dpr = (Math.cos(rad) * ar + Math.sin(rad) * ai) / den;
@@ -399,12 +411,29 @@ class NavimowMapCard extends HTMLElement {
           const n = Math.hypot(dpr, dpi) || 1;
           ux = dpr / n; uy = -dpi / n;
         }
-        const ax = px + ux * 34, ay = py + uy * 34;
-        s += `<line x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="var(--accent-color, #ff9800)" stroke-width="7" stroke-linecap="round"/>`;
+        mwrInner += `<line x1="0" y1="0" x2="${(ux * 34).toFixed(1)}" y2="${(uy * 34).toFixed(1)}" stroke="var(--accent-color, #ff9800)" stroke-width="7" stroke-linecap="round"/>`;
       }
-      s += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="15" fill="var(--accent-color, #ff9800)" stroke="white" stroke-width="3"/>`;
+      mwrInner += `<circle r="15" fill="var(--accent-color, #ff9800)" stroke="white" stroke-width="3"/>`;
+
+      let grp = mwrSvg.querySelector('.nm-mwr-grp');
+      if (!grp) {
+        // First appearance: create element and set position instantly (no animation)
+        grp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        grp.setAttribute('class', 'nm-mwr-grp');
+        mwrSvg.appendChild(grp);
+        grp.style.transition = 'none';
+        grp.style.transform = `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;
+        // Re-enable transition after layout so the NEXT update animates
+        requestAnimationFrame(() => requestAnimationFrame(() => { grp.style.transition = ''; }));
+      } else {
+        grp.style.transform = `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;
+      }
+      grp.innerHTML = mwrInner;
+    } else {
+      // No position — remove the marker
+      const grp = mwrSvg.querySelector('.nm-mwr-grp');
+      if (grp) grp.remove();
     }
-    svg.innerHTML = s;
   }
 
   getCardSize() { return 6; }
