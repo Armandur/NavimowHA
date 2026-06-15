@@ -163,12 +163,12 @@ template:
       # Polarity matches the raw sensors: off = at that endpoint.
       - name: "Garden gate open steady"
         unique_id: garden_gate_open_steady
-        delay_on: "00:00:10"
+        delay_on: "00:00:02"
         delay_off: "00:00:05"
         state: "{{ is_state('binary_sensor.garden_gate_open_sensor', 'on') }}"  # CHANGE: open sensor
       - name: "Garden gate closed steady"
         unique_id: garden_gate_closed_steady
-        delay_on: "00:00:05"
+        delay_on: "00:00:02"
         delay_off: "00:00:05"
         state: "{{ is_state('binary_sensor.garden_gate_closed_sensor', 'on') }}"  # CHANGE: closed sensor
       # On when the mower is ACTIVE and its target zone is NOT a known
