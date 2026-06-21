@@ -345,17 +345,10 @@ script:
               - wait_template: "{{ is_state('binary_sensor.garden_gate_open_steady','off') }}"
                 timeout: "00:00:45"
                 continue_on_timeout: true
-              - condition: template
-                value_template: "{{ not is_state('binary_sensor.garden_gate_open_steady','off') }}"
-              - service: persistent_notification.create
-                data:
-                  title: "Navimow gate"
-                  message: "Tried to OPEN the gate but it did not reach fully-open within 45s. Check the gate."
-        default:
-          - service: persistent_notification.create
-            data:
-              title: "Navimow gate"
-              message: "OPEN requested but the gate is not at a known endpoint (mid-travel?). Not pulsing - check the gate."
+              # Open-failure notification removed 2026-06-20 at user request --
+              # the assumed-open logic now covers a gate stuck in "Opening".
+        # Mid-travel default notification removed 2026-06-20 at user request.
+        default: []
 
   navimow_gate_ensure_closed:
     alias: "Navimow Gate - Ensure Closed"
@@ -405,11 +398,8 @@ script:
                 data:
                   title: "Navimow gate"
                   message: "Tried to CLOSE the gate (from assumed-open) but it did not reach fully-closed within 45s. Check the gate."
-        default:
-          - service: persistent_notification.create
-            data:
-              title: "Navimow gate"
-              message: "CLOSE requested but the gate is not at a known endpoint (mid-travel?). Not pulsing - check the gate."
+        # Mid-travel default notification removed 2026-06-20 at user request.
+        default: []
 
 automation:
   - id: navimow_gate_open_for_gate_zone
