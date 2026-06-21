@@ -72,6 +72,15 @@ input_boolean:
     name: Navimow gate - override keep open
     icon: mdi:gate-open
 
+  # Set automatically after the gate has been in "Opening" state for 30 seconds
+  # without the open endpoint sensor confirming (e.g. wind swinging the door so
+  # the magnet never settles). Treated identically to a confirmed open: status
+  # shows "Open", close scripts can pulse, and "already open" guards are skipped.
+  # Cleared automatically when a physical sensor confirms open or closed.
+  navimow_gate_assumed_open:
+    name: Navimow gate assumed open
+    icon: mdi:gate-open
+
 input_text:
   # What the interlock should do to resume the mower ('start_mowing' or 'dock').
   navimow_gate_resume_action:
@@ -113,13 +122,16 @@ template:
         unique_id: garden_gate_status
         icon: mdi:gate
         state: >-
-          {{ 'Closed'
-             if (states('binary_sensor.garden_gate_closed_steady') == 'off' and states('binary_sensor.garden_gate_open_steady') == 'on')
-             else 'Open'
-             if (states('binary_sensor.garden_gate_open_steady') == 'off' and states('binary_sensor.garden_gate_closed_steady') == 'on')
-             else (('Opening' if states.binary_sensor.garden_gate_closed_steady.last_changed > states.binary_sensor.garden_gate_open_steady.last_changed else 'Closing')
-             if (states('binary_sensor.garden_gate_closed_steady') == 'on' and states('binary_sensor.garden_gate_open_steady') == 'on')
-             else 'Unknown') }}
+          {% set cs = states('binary_sensor.garden_gate_closed_steady') %}
+          {% set os = states('binary_sensor.garden_gate_open_steady') %}
+          {% set assumed = is_state('input_boolean.navimow_gate_assumed_open', 'on') %}
+          {{ 'Closed'  if (cs == 'off' and os == 'on')
+             else 'Open' if (os == 'off' or (assumed and cs != 'off'))
+             else (('Opening' if states.binary_sensor.garden_gate_closed_steady.last_changed
+                                  > states.binary_sensor.garden_gate_open_steady.last_changed
+                    else 'Closing')
+                   if (cs == 'on' and os == 'on')
+                   else 'Unknown') }}
 
       # Live PHYSICAL mowing zone (fork's type:2 currentMowBoundary). Works for
       # "mow all" too. Keep this names map IN SYNC with "Navimow current zone".
@@ -356,7 +368,7 @@ script:
                 entity_id: binary_sensor.garden_gate_closed_steady
                 state: "off"
             sequence: []
-          # Fully open -> safe to pulse closed, then verify.
+          # Fully open (confirmed) -> safe to pulse closed, then verify.
           - conditions:
               - condition: state
                 entity_id: binary_sensor.garden_gate_open_steady
@@ -374,6 +386,25 @@ script:
                 data:
                   title: "Navimow gate"
                   message: "Tried to CLOSE the gate but it did not reach fully-closed within 45s. Check the gate."
+          # Assumed open (stuck in Opening for 30s, open sensor not confirming due to
+          # wind). Treat as fully open and pulse closed; verify as normal.
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.navimow_gate_assumed_open
+                state: "on"
+            sequence:
+              - service: switch.turn_on
+                target:
+                  entity_id: switch.garden_gate_opener_switch_1     # CHANGE: gate switch
+              - wait_template: "{{ is_state('binary_sensor.garden_gate_closed_steady','off') }}"
+                timeout: "00:00:45"
+                continue_on_timeout: true
+              - condition: template
+                value_template: "{{ not is_state('binary_sensor.garden_gate_closed_steady','off') }}"
+              - service: persistent_notification.create
+                data:
+                  title: "Navimow gate"
+                  message: "Tried to CLOSE the gate (from assumed-open) but it did not reach fully-closed within 45s. Check the gate."
         default:
           - service: persistent_notification.create
             data:
@@ -416,7 +447,9 @@ automation:
         state: "on"
       # Skip if already fully open.
       - condition: template
-        value_template: "{{ not is_state('binary_sensor.garden_gate_open_steady','off') }}"
+        value_template: >-
+          {{ not (is_state('binary_sensor.garden_gate_open_steady', 'off')
+                  or is_state('input_boolean.navimow_gate_assumed_open', 'on')) }}
       - service: script.navimow_gate_ensure_open
 
   - id: navimow_gate_open_on_returning
@@ -441,7 +474,9 @@ automation:
         entity_id: binary_sensor.navimow_gate_zone_required
         state: "on"
       - condition: template
-        value_template: "{{ not is_state('binary_sensor.garden_gate_open_steady','off') }}"
+        value_template: >-
+          {{ not (is_state('binary_sensor.garden_gate_open_steady', 'off')
+                  or is_state('input_boolean.navimow_gate_assumed_open', 'on')) }}
     action:
       - service: script.navimow_gate_ensure_open
 
@@ -506,7 +541,9 @@ automation:
           {% set z = states('sensor.peter_griffin_mowing_zone') %}
           {{ z not in no_gate_zones + ['0', 'unknown', 'unavailable'] }}
       - condition: template
-        value_template: "{{ not is_state('binary_sensor.garden_gate_open_steady','off') }}"
+        value_template: >-
+          {{ not (is_state('binary_sensor.garden_gate_open_steady', 'off')
+                  or is_state('input_boolean.navimow_gate_assumed_open', 'on')) }}
     action:
       - service: script.navimow_gate_ensure_open
 
@@ -544,7 +581,9 @@ automation:
         state: "on"
       # Gate not confirmed fully open.
       - condition: template
-        value_template: "{{ not is_state('binary_sensor.garden_gate_open_steady','off') }}"
+        value_template: >-
+          {{ not (is_state('binary_sensor.garden_gate_open_steady', 'off')
+                  or is_state('input_boolean.navimow_gate_assumed_open', 'on')) }}
     action:
       # Remember how to resume BEFORE pausing ('returning' resumes with dock).
       - service: input_text.set_value
@@ -588,7 +627,9 @@ automation:
         entity_id: binary_sensor.navimow_in_transit
         state: "on"
       - condition: template
-        value_template: "{{ not is_state('binary_sensor.garden_gate_open_steady','off') }}"
+        value_template: >-
+          {{ not (is_state('binary_sensor.garden_gate_open_steady', 'off')
+                  or is_state('input_boolean.navimow_gate_assumed_open', 'on')) }}
     action:
       - service: script.navimow_gate_ensure_open
 
@@ -607,6 +648,11 @@ automation:
         entity_id: binary_sensor.garden_gate_open_steady
         to: "off"
         for: "00:00:03"
+      # Also fire when the gate is assumed open (stuck in Opening 30s) so we
+      # don't have to wait for a sensor that may never confirm.
+      - platform: state
+        entity_id: input_boolean.navimow_gate_assumed_open
+        to: "on"
     condition:
       - condition: state
         entity_id: input_boolean.navimow_gate_automation
@@ -655,7 +701,9 @@ automation:
             entity_id: binary_sensor.navimow_in_transit
             state: "on"
       - condition: template
-        value_template: "{{ not is_state('binary_sensor.garden_gate_open_steady','off') }}"
+        value_template: >-
+          {{ not (is_state('binary_sensor.garden_gate_open_steady', 'off')
+                  or is_state('input_boolean.navimow_gate_assumed_open', 'on')) }}
     action:
       - service: script.navimow_gate_ensure_open
 
@@ -735,3 +783,41 @@ automation:
       - service: input_boolean.turn_off
         target:
           entity_id: input_boolean.navimow_gate_manual_open
+
+  # Set the assumed-open flag after the gate has been stuck in "Opening" for
+  # 30 seconds without the open endpoint sensor confirming. Wind can swing the
+  # gate leaf enough to keep the magnet out of range indefinitely.
+  - id: navimow_gate_set_assumed_open
+    alias: "Navimow Gate - Assume open after 30s stuck in Opening"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: sensor.garden_gate_status
+        to: "Opening"
+        for: "00:00:30"
+    action:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.navimow_gate_assumed_open
+
+  # Clear the assumed-open flag once a physical sensor gives a definitive answer:
+  # either the open endpoint confirms (gate really is open) or the closed endpoint
+  # confirms (gate successfully closed after a pulse).
+  - id: navimow_gate_clear_assumed_open
+    alias: "Navimow Gate - Clear assumed open when a sensor confirms"
+    mode: single
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.garden_gate_open_steady
+        to: "off"   # endpoint confirmed open
+      - platform: state
+        entity_id: binary_sensor.garden_gate_closed_steady
+        to: "off"   # endpoint confirmed closed
+    condition:
+      - condition: state
+        entity_id: input_boolean.navimow_gate_assumed_open
+        state: "on"
+    action:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.navimow_gate_assumed_open
