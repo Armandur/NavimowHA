@@ -61,6 +61,43 @@ queries the cloud's `responseCommands` endpoint (best effort) and exposes the
 result as the `lawn_mower` entity's `last_command_result` attribute — useful
 for automations that want to know a command was actually accepted.
 
+**Device events on the HA bus.** Every MQTT device event (stuck, lifted,
+rain delay, …) is fired as a `navimow_event` on the event bus with
+`device_id`, `device_name`, `type`, `event`, `level`, `message`, `params`
+and `timestamp` — use it as an automation trigger:
+
+```yaml
+trigger:
+  - platform: event
+    event_type: navimow_event
+```
+
+A `Last event` sensor shows the most recent event with details as attributes.
+
+**Binary sensors.** Per mower: `charging` (raw status, which the
+`lawn_mower` activity hides by mapping charging → docked), `problem` (device
+reports an error), `task_delayed` (rain/schedule delay from the location
+stream) and a diagnostic `live_data` (MQTT push data currently arriving).
+
+**Diagnostics.** Settings → Devices & Services → Navimow → Download
+diagnostics gives a redacted dump of state, location, dock estimate, last
+event/command result and coordinator metadata for issue reports.
+
+**Device tracker (GPS).** Configure a 2-point calibration in the
+integration options (Settings → Devices & Services → Navimow → Configure)
+to put the mower on Home Assistant's map. Each reference point pairs local
+mower coordinates with the same spot's latitude/longitude:
+
+1. **Reference 1 — the dock**: local X/Y from the `dock_x`/`dock_y` sensors,
+   lat/lon read from Google Maps (right-click the dock → copy coordinates).
+2. **Reference 2 — any landmark** as far away as practical: park the mower
+   there and read `position_x`/`position_y`, then the spot's lat/lon.
+
+The `device_tracker.<name>_location` entity is created once all eight
+fields are set (a warning is logged and the tracker skipped if the
+calibration looks wrong, e.g. swapped lat/lon). This enables zone/geofence
+automations without the custom map card.
+
 **Map card v4** (`examples/gate-automation/navimow-map-card.js`) — three new
 options, all backward-compatible:
 
@@ -139,7 +176,10 @@ After setup you should see:
 - A `lawn_mower` entity (start / pause / dock)
 - A battery `sensor`
 - `zone`, `position_x`, `position_y`, `heading`, `mowing_zone`, `mow_progress`,
-  `dock_x`, and `dock_y` sensors (this fork)
+  `dock_x`, `dock_y`, and `last_event` sensors (this fork)
+- `charging`, `problem`, `task_delayed`, and `live_data` binary sensors
+  (this fork)
+- A `device_tracker` once GPS calibration is configured (this fork)
 
 The position/zone sensors show `unknown` while docked and begin updating once
 the mower starts moving. The dock sensors are the opposite: they learn (and
