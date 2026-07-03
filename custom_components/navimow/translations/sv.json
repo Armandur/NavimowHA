@@ -51,6 +51,52 @@
     "sensor": {
       "battery": {
         "name": "Batteri"
+      },
+      "zone": {
+        "name": "Zon"
+      },
+      "position_x": {
+        "name": "Position X"
+      },
+      "position_y": {
+        "name": "Position Y"
+      },
+      "heading": {
+        "name": "Riktning"
+      },
+      "mowing_zone": {
+        "name": "Klippzon"
+      },
+      "dock_x": {
+        "name": "Docka X"
+      },
+      "dock_y": {
+        "name": "Docka Y"
+      },
+      "last_event": {
+        "name": "Senaste händelse"
+      },
+      "mow_progress": {
+        "name": "Klippförlopp"
+      }
+    },
+    "binary_sensor": {
+      "charging": {
+        "name": "Laddar"
+      },
+      "problem": {
+        "name": "Problem"
+      },
+      "task_delayed": {
+        "name": "Uppgift fördröjd"
+      },
+      "mqtt_connected": {
+        "name": "Livedata"
+      }
+    },
+    "device_tracker": {
+      "location": {
+        "name": "Plats"
       }
     }
   }

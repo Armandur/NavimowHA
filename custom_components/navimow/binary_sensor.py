@@ -47,25 +47,25 @@ def _task_delayed(c: NavimowCoordinator) -> bool | None:
 BINARY_SENSOR_DESCRIPTIONS: tuple[NavimowBinarySensorEntityDescription, ...] = (
     NavimowBinarySensorEntityDescription(
         key="charging",
-        name="Charging",
+        translation_key="charging",
         device_class=BinarySensorDeviceClass.BATTERY_CHARGING,
         value_fn=_charging,
     ),
     NavimowBinarySensorEntityDescription(
         key="problem",
-        name="Problem",
+        translation_key="problem",
         device_class=BinarySensorDeviceClass.PROBLEM,
         value_fn=_problem,
     ),
     NavimowBinarySensorEntityDescription(
         key="task_delayed",
-        name="Task delayed",
+        translation_key="task_delayed",
         icon="mdi:weather-rainy",
         value_fn=_task_delayed,
     ),
     NavimowBinarySensorEntityDescription(
         key="mqtt_connected",
-        name="Live data",
+        translation_key="mqtt_connected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda c: c.is_mqtt_fresh(),

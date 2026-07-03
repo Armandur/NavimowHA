@@ -100,7 +100,7 @@ class NavimowDeviceTracker(CoordinatorEntity[NavimowCoordinator], TrackerEntity)
     """GPS position of a Navimow mower via calibrated local coordinates."""
 
     _attr_has_entity_name = True
-    _attr_name = "Location"
+    _attr_translation_key = "location"
 
     def __init__(
         self, coordinator: NavimowCoordinator, calibration: dict[str, float]

@@ -44,7 +44,7 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
     ),
     NavimowSensorEntityDescription(
         key="zone",
-        name="Zone",
+        translation_key="zone",
         icon="mdi:map-marker",
         value_fn=lambda c: (
             loc.get("partition") if (loc := c.get_device_location()) else None
@@ -52,21 +52,21 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
     ),
     NavimowSensorEntityDescription(
         key="position_x",
-        name="Position X",
+        translation_key="position_x",
         native_unit_of_measurement="m",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda c: (loc.get("x") if (loc := c.get_device_location()) else None),
     ),
     NavimowSensorEntityDescription(
         key="position_y",
-        name="Position Y",
+        translation_key="position_y",
         native_unit_of_measurement="m",
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda c: (loc.get("y") if (loc := c.get_device_location()) else None),
     ),
     NavimowSensorEntityDescription(
         key="heading",
-        name="Heading",
+        translation_key="heading",
         native_unit_of_measurement="°",
         icon="mdi:compass",
         value_fn=lambda c: (
@@ -77,7 +77,7 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
     ),
     NavimowSensorEntityDescription(
         key="mowing_zone",
-        name="Mowing zone",
+        translation_key="mowing_zone",
         icon="mdi:robot-mower",
         value_fn=lambda c: (
             loc.get("mow_boundary") if (loc := c.get_device_location()) else None
@@ -85,7 +85,7 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
     ),
     NavimowSensorEntityDescription(
         key="dock_x",
-        name="Dock X",
+        translation_key="dock_x",
         native_unit_of_measurement="m",
         icon="mdi:home-map-marker",
         value_fn=lambda c: (
@@ -94,7 +94,7 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
     ),
     NavimowSensorEntityDescription(
         key="dock_y",
-        name="Dock Y",
+        translation_key="dock_y",
         native_unit_of_measurement="m",
         icon="mdi:home-map-marker",
         value_fn=lambda c: (
@@ -103,7 +103,7 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
     ),
     NavimowSensorEntityDescription(
         key="last_event",
-        name="Last event",
+        translation_key="last_event",
         icon="mdi:bell-alert-outline",
         value_fn=lambda c: (
             ev.event if (ev := c.get_last_event()) else None
@@ -111,7 +111,7 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
     ),
     NavimowSensorEntityDescription(
         key="mow_progress",
-        name="Mow progress",
+        translation_key="mow_progress",
         icon="mdi:progress-check",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,

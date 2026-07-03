@@ -51,6 +51,52 @@
     "sensor": {
       "battery": {
         "name": "Battery"
+      },
+      "zone": {
+        "name": "Zone"
+      },
+      "position_x": {
+        "name": "Position X"
+      },
+      "position_y": {
+        "name": "Position Y"
+      },
+      "heading": {
+        "name": "Heading"
+      },
+      "mowing_zone": {
+        "name": "Mowing zone"
+      },
+      "dock_x": {
+        "name": "Dock X"
+      },
+      "dock_y": {
+        "name": "Dock Y"
+      },
+      "last_event": {
+        "name": "Last event"
+      },
+      "mow_progress": {
+        "name": "Mow progress"
+      }
+    },
+    "binary_sensor": {
+      "charging": {
+        "name": "Charging"
+      },
+      "problem": {
+        "name": "Problem"
+      },
+      "task_delayed": {
+        "name": "Task delayed"
+      },
+      "mqtt_connected": {
+        "name": "Live data"
+      }
+    },
+    "device_tracker": {
+      "location": {
+        "name": "Location"
       }
     }
   }
