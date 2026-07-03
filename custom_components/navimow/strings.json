@@ -28,9 +28,17 @@
     "step": {
       "init": {
         "title": "Navimow 选项",
-        "description": "配置 Navimow 集成选项",
+        "description": "配置 Navimow 集成选项。GPS calibration (optional): pair two spots' local mower coordinates (position_x/_y or dock_x/_y sensors) with their latitude/longitude to put the mower on the map. All eight fields are required for the tracker.",
         "data": {
-          "battery_refresh_seconds": "Battery refresh interval (seconds, 0 = disabled)"
+          "battery_refresh_seconds": "Battery refresh interval (seconds, 0 = disabled)",
+          "gps_ref1_x": "Reference 1: local X (m)",
+          "gps_ref1_y": "Reference 1: local Y (m)",
+          "gps_ref1_lat": "Reference 1: latitude",
+          "gps_ref1_lon": "Reference 1: longitude",
+          "gps_ref2_x": "Reference 2: local X (m)",
+          "gps_ref2_y": "Reference 2: local Y (m)",
+          "gps_ref2_lat": "Reference 2: latitude",
+          "gps_ref2_lon": "Reference 2: longitude"
         }
       }
     }

@@ -51,6 +51,29 @@ HTTP_FALLBACK_MIN_INTERVAL: Final = 3600
 CONF_BATTERY_REFRESH_SECONDS: Final = "battery_refresh_seconds"
 DEFAULT_BATTERY_REFRESH_SECONDS: Final = 120
 
+# 2-point GPS calibration for the device tracker (fork addition). Each
+# reference pairs the mower's local coordinates (meters, read from the
+# position_x/_y or dock_x/_y sensors) with the same spot's latitude and
+# longitude. The tracker entity is created only when all eight are set.
+CONF_GPS_REF1_X: Final = "gps_ref1_x"
+CONF_GPS_REF1_Y: Final = "gps_ref1_y"
+CONF_GPS_REF1_LAT: Final = "gps_ref1_lat"
+CONF_GPS_REF1_LON: Final = "gps_ref1_lon"
+CONF_GPS_REF2_X: Final = "gps_ref2_x"
+CONF_GPS_REF2_Y: Final = "gps_ref2_y"
+CONF_GPS_REF2_LAT: Final = "gps_ref2_lat"
+CONF_GPS_REF2_LON: Final = "gps_ref2_lon"
+GPS_CALIBRATION_KEYS: Final = (
+    CONF_GPS_REF1_X,
+    CONF_GPS_REF1_Y,
+    CONF_GPS_REF1_LAT,
+    CONF_GPS_REF1_LON,
+    CONF_GPS_REF2_X,
+    CONF_GPS_REF2_Y,
+    CONF_GPS_REF2_LAT,
+    CONF_GPS_REF2_LON,
+)
+
 # MowerStatus 到 LawnMowerActivity 的映射
 MOWER_STATUS_TO_ACTIVITY = {
     "idle": "docked",

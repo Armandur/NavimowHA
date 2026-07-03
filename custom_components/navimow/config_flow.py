@@ -18,6 +18,7 @@ from .const import (
     API_BASE_URL,
     CONF_BATTERY_REFRESH_SECONDS,
     DEFAULT_BATTERY_REFRESH_SECONDS,
+    GPS_CALIBRATION_KEYS,
     MQTT_BROKER,
     MQTT_PORT,
     MQTT_USERNAME,
@@ -171,17 +172,27 @@ class NavimowOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        options = self._config_entry.options
+        schema: dict[Any, Any] = {
+            vol.Optional(
+                CONF_BATTERY_REFRESH_SECONDS,
+                default=options.get(
+                    CONF_BATTERY_REFRESH_SECONDS,
+                    DEFAULT_BATTERY_REFRESH_SECONDS,
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
+        }
+        # 2-point GPS calibration for the device tracker; all eight fields
+        # must be filled in for the tracker entity to be created.
+        for key in GPS_CALIBRATION_KEYS:
+            schema[
+                vol.Optional(
+                    key,
+                    description={"suggested_value": options.get(key)},
+                )
+            ] = vol.Coerce(float)
+
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_BATTERY_REFRESH_SECONDS,
-                        default=self._config_entry.options.get(
-                            CONF_BATTERY_REFRESH_SECONDS,
-                            DEFAULT_BATTERY_REFRESH_SECONDS,
-                        ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
-                }
-            ),
+            data_schema=vol.Schema(schema),
         )
