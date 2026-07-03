@@ -1,14 +1,17 @@
 /*
- * Navimow Map Card  (v3 — satellite overlay + recorder-backed session trail)
+ * Navimow Map Card  (v4 — multi-session trails + mow controls + zone names)
  *
  * A self-contained Lovelace custom card. Plots the mower's local (x,y) meter
- * coordinates with a heading arrow and the path of the CURRENT mowing session,
- * optionally over a calibrated aerial/satellite image. The session path is
- * rebuilt from Home Assistant's recorder history on load, so it survives page
- * reloads and navigation, and resets automatically when a new session starts
- * (docked -> mowing). Auto-learns the dock position via the integration's dock
- * sensors (fork v1.1.0+position.4) with a local-learning fallback for older
- * forks. No external dependencies.
+ * coordinates with a heading arrow, the path of the CURRENT mowing session in
+ * the accent color, and (optionally) the last N completed sessions in muted
+ * grey — optionally over a calibrated aerial/satellite image. All paths are
+ * rebuilt from Home Assistant's recorder history on load, so they survive page
+ * reloads and navigation; the current path resets automatically when a new
+ * session starts (docked -> mowing) and the finished one becomes a grey
+ * session. Auto-learns the dock position via the integration's dock sensors
+ * (fork v1.1.0+position.4) with a local-learning fallback for older forks.
+ * Optional Mow / Pause / Dock buttons call the lawn_mower services.
+ * No external dependencies.
  *
  * Install:
  *   1. Put this file at /config/www/navimow-map-card.js
@@ -25,9 +28,18 @@
  *   zone_entity: sensor.navimow_current_zone
  *   status_entity: lawn_mower.peter_griffin
  *   battery_entity:           # e.g. sensor.peter_griffin_battery (optional)
- *   trail_length: 2000        # max trail points kept (older points are thinned,
- *                             #   not dropped, so the whole path keeps its shape)
- *   history_hours: 24         # how far back to look for the session start
+ *   trail_length: 2000        # max trail points kept per session (older points
+ *                             #   are thinned, not dropped, so paths keep shape)
+ *   history_hours: 24         # how far back to look for session starts
+ *   session_count: 5          # completed sessions drawn in grey behind the
+ *                             #   current one; 0 = current session only (the
+ *                             #   pre-v4 behavior)
+ *   show_controls: true       # Mow / Pause / Dock buttons under the footer;
+ *                             #   they call lawn_mower.start_mowing / pause /
+ *                             #   dock on status_entity
+ *   zone_names:               # map zone/partition ids to friendly names in
+ *     "3": Front lawn         #   the footer; unmapped ids show as the raw id
+ *     "5": Back yard
  *   dock_x_entity:            # integration dock sensors (auto-derived from
  *   dock_y_entity:            #   x_entity/y_entity names if not set)
  *   dock_x:                   # manual dock override (meters); disables auto-learn
@@ -59,6 +71,9 @@ class NavimowMapCard extends HTMLElement {
       battery_entity: null,
       trail_length: 2000,
       history_hours: 24,
+      session_count: 5,
+      show_controls: true,
+      zone_names: null,
       dock_x_entity: null,
       dock_y_entity: null,
       dock_x: null,
@@ -76,6 +91,7 @@ class NavimowMapCard extends HTMLElement {
     if (!this._config.dock_y_entity && /position_y/.test(this._config.y_entity))
       this._config.dock_y_entity = this._config.y_entity.replace('position_y', 'dock_y');
     this._trail = [];
+    this._pastTrails = [];      // last N completed sessions, oldest first
     this._lastKey = null;
     this._prevState = null;
     this._histLoaded = false;
@@ -97,6 +113,12 @@ class NavimowMapCard extends HTMLElement {
           <svg class="nm-mwr" preserveAspectRatio="xMidYMid meet"></svg>
         </div>
         <div class="nm-ftr"></div>
+        ${this._config.show_controls !== false ? `
+        <div class="nm-btns">
+          <button class="nm-btn nm-btn-mow" type="button">Mow</button>
+          <button class="nm-btn nm-btn-pause" type="button">Pause</button>
+          <button class="nm-btn nm-btn-dock" type="button">Dock</button>
+        </div>` : ''}
       </ha-card>
       <style>
         ha-card { padding: 12px; }
@@ -110,7 +132,23 @@ class NavimowMapCard extends HTMLElement {
         .nm-ftr { margin-top: 8px; font-size: 0.9em; color: var(--secondary-text-color);
           display: flex; gap: 14px; flex-wrap: wrap; }
         .nm-ftr b { color: var(--primary-text-color); }
+        .nm-btns { margin-top: 10px; display: flex; gap: 8px; }
+        .nm-btn { flex: 1; border: none; border-radius: 8px; padding: 10px 0;
+          color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+        .nm-btn:active { filter: brightness(0.85); }
+        .nm-btn-mow { background: #43a047; }
+        .nm-btn-pause { background: #e53935; }
+        .nm-btn-dock { background: #1e88e5; }
       </style>`;
+    if (this._config.show_controls !== false) {
+      const svc = (service) => () => {
+        if (!this._hass) return;
+        this._hass.callService('lawn_mower', service, { entity_id: this._config.status_entity });
+      };
+      this.querySelector('.nm-btn-mow').addEventListener('click', svc('start_mowing'));
+      this.querySelector('.nm-btn-pause').addEventListener('click', svc('pause'));
+      this.querySelector('.nm-btn-dock').addEventListener('click', svc('dock'));
+    }
   }
 
   set hass(hass) {
@@ -185,8 +223,10 @@ class NavimowMapCard extends HTMLElement {
     return out;
   }
 
-  // Rebuild the current session's path from HA's recorder: find the latest
-  // docked -> mowing transition and replay position history since then.
+  // Rebuild session paths from HA's recorder: find the docked -> mowing
+  // transitions in the window, replay position history for the latest one
+  // (the current session) and, with session_count > 0, for the up-to-N
+  // completed sessions before it (drawn in grey).
   async _loadSessionHistory() {
     const c = this._config, hass = this._hass;
     try {
@@ -204,12 +244,20 @@ class NavimowMapCard extends HTMLElement {
       const st = (r && r[c.status_entity]) || [];
       const xs = (r && r[c.x_entity]) || [];
       const ys = (r && r[c.y_entity]) || [];
-      let t0 = null; // session start (epoch seconds)
-      for (let i = 1; i < st.length; i++)
-        if (st[i].s === 'mowing' && st[i - 1].s === 'docked') t0 = st[i].lu;
-      if (t0 === null) return; // no session start in window -> live-only
+      // session windows: start = docked -> mowing transition (epoch seconds),
+      // end = the next time the status returns to docked
+      const sessions = [];
+      for (let i = 1; i < st.length; i++) {
+        if (st[i].s === 'mowing' && st[i - 1].s === 'docked') {
+          sessions.push({ t0: st[i].lu, t1: null });
+        } else if (sessions.length && st[i].s === 'docked') {
+          const se = sessions[sessions.length - 1];
+          if (se.t1 === null) se.t1 = st[i].lu;
+        }
+      }
+      if (!sessions.length) return; // no session start in window -> live-only
       // merge x/y series: for each x sample, pair with the latest y at that time
-      const pts = [];
+      const pts = []; // [epoch, x, y]
       let yi = 0, lastY = null;
       for (const ex of xs) {
         const x = parseFloat(ex.s);
@@ -218,14 +266,25 @@ class NavimowMapCard extends HTMLElement {
           if (!isNaN(v)) lastY = v;
           yi++;
         }
-        if (!isNaN(x) && ex.lu >= t0 && lastY !== null) pts.push([x, lastY]);
+        if (!isNaN(x) && lastY !== null) pts.push([ex.lu, x, lastY]);
       }
-      if (pts.length) {
+      const current = sessions.pop();
+      const nPast = Math.max(0, c.session_count | 0);
+      const past = nPast > 0 ? sessions.slice(-nPast) : [];
+      this._pastTrails = past
+        .map(se => this._decimate(
+          pts.filter(p => p[0] >= se.t0 && p[0] <= se.t1).map(p => [p[1], p[2]]),
+          c.trail_length))
+        .filter(t => t.length > 1);
+      // current session: everything since its start (no end bound, matching
+      // the pre-v4 single-session behavior)
+      const curPts = pts.filter(p => p[0] >= current.t0).map(p => [p[1], p[2]]);
+      if (curPts.length) {
         // history first, then any live points that arrived while fetching
-        this._trail = this._decimate(pts.concat(this._trail), c.trail_length);
+        this._trail = this._decimate(curPts.concat(this._trail), c.trail_length);
         this._lastKey = null;
-        this._update();
       }
+      this._update();
     } catch (e) {
       // recorder disabled or entities excluded -> live-only trail
     }
@@ -246,8 +305,15 @@ class NavimowMapCard extends HTMLElement {
     const rawStatus = stObj ? ((stObj.attributes && stObj.attributes.status) || stObj.state) : '';
     const batt = c.battery_entity ? this._num(c.battery_entity) : null;
 
-    // new mowing session (docked -> mowing) -> reset the path
+    // new mowing session (docked -> mowing) -> archive the finished path as a
+    // grey session (when session_count > 0) and reset the current one
     if (this._prevState === 'docked' && status === 'mowing') {
+      const nPast = Math.max(0, c.session_count | 0);
+      if (nPast > 0 && this._trail.length > 1) {
+        this._pastTrails.push(this._trail);
+        if (this._pastTrails.length > nPast)
+          this._pastTrails.splice(0, this._pastTrails.length - nPast);
+      }
       this._trail = [];
       this._lastKey = null;
     }
@@ -287,8 +353,12 @@ class NavimowMapCard extends HTMLElement {
     }
 
     this.querySelector('.nm-hdr').textContent = c.title;
+    // map the raw partition id to a friendly name; fall back to the raw id
+    const zoneName = (c.zone_names && c.zone_names[zone] != null)
+      ? String(c.zone_names[zone]) : zone;
+    const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const parts = [
-      `Zone: <b>${zone}</b>`,
+      `Zone: <b>${esc(zoneName)}</b>`,
       `Status: <b>${status}</b>`,
       (x !== null && y !== null) ? `Pos: <b>${x.toFixed(1)}, ${y.toFixed(1)} m</b>` : `Pos: <b>—</b>`,
     ];
@@ -323,7 +393,8 @@ class NavimowMapCard extends HTMLElement {
     }
     const overlayReady = !!(this._imgMeta && this._cal);
 
-    if (!overlayReady && pts.length === 0 && (x === null || y === null)) {
+    if (!overlayReady && pts.length === 0 && this._pastTrails.length === 0
+        && (x === null || y === null)) {
       svg.setAttribute('viewBox', `0 0 ${V} ${V}`);
       svg.innerHTML = `<text x="${V/2}" y="${V/2}" fill="var(--secondary-text-color)" font-size="34" text-anchor="middle">Waiting for position…</text>`;
       return;
@@ -335,11 +406,14 @@ class NavimowMapCard extends HTMLElement {
     const upright = overlayReady && c.straighten !== false;
     const M2W = upright ? ((mx, my) => this._mToPx(mx, my)) : ((mx, my) => [mx, my]);
 
-    // view extents: trail + dock + live pos (+ image corners when present)
+    // view extents: trails + dock + live pos (+ image corners when present)
     const wpts = pts.map(p => M2W(p[0], p[1]));
+    const wpast = this._pastTrails.map(t => t.map(p => M2W(p[0], p[1])));
+    const xs = wpts.map(p => p[0]);
+    const ys = wpts.map(p => p[1]);
+    for (const t of wpast) for (const p of t) { xs.push(p[0]); ys.push(p[1]); }
     const wdock = M2W(dock[0], dock[1]);
-    const xs = wpts.map(p => p[0]).concat([wdock[0]]);
-    const ys = wpts.map(p => p[1]).concat([wdock[1]]);
+    xs.push(wdock[0]); ys.push(wdock[1]);
     let wpos = null;
     if (x !== null && y !== null) {
       wpos = M2W(x, y);
@@ -381,9 +455,14 @@ class NavimowMapCard extends HTMLElement {
               transform="matrix(${A} ${B} ${C} ${D} ${E} ${F})"
               opacity="${c.overlay_opacity}" preserveAspectRatio="none"/>`;
     }
+    // completed sessions in muted grey, oldest first, under the current path
+    const toPath = (t) => t.map((p, i) => `${i === 0 ? 'M' : 'L'}${tx(p[0]).toFixed(1)} ${ty(p[1]).toFixed(1)}`).join(' ');
+    for (const t of wpast) {
+      if (t.length < 2) continue;
+      s += `<path d="${toPath(t)}" fill="none" stroke="var(--disabled-text-color, #9e9e9e)" stroke-width="4" stroke-opacity="0.4" stroke-linejoin="round" stroke-linecap="round"/>`;
+    }
     if (wpts.length > 1) {
-      const d = wpts.map((p, i) => `${i === 0 ? 'M' : 'L'}${tx(p[0]).toFixed(1)} ${ty(p[1]).toFixed(1)}`).join(' ');
-      s += `<path d="${d}" fill="none" stroke="var(--primary-color)" stroke-width="4" stroke-opacity="0.55" stroke-linejoin="round" stroke-linecap="round"/>`;
+      s += `<path d="${toPath(wpts)}" fill="none" stroke="var(--primary-color)" stroke-width="4" stroke-opacity="0.55" stroke-linejoin="round" stroke-linecap="round"/>`;
     }
     // dock marker (configured > auto-learned > origin fallback)
     s += `<g transform="translate(${tx(wdock[0]).toFixed(1)},${ty(wdock[1]).toFixed(1)})">
@@ -444,5 +523,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'navimow-map-card',
   name: 'Navimow Map',
-  description: 'Live Navimow position + session path, optional satellite overlay.',
+  description: 'Live Navimow position + session paths, mow controls, optional satellite overlay.',
 });
