@@ -128,6 +128,8 @@ class NavimowLawnMower(CoordinatorEntity[NavimowCoordinator], LawnMowerEntity):
             attributes["metrics"] = state.metrics
         if attrs:
             attributes["attributes"] = attrs.attributes
+        if (cmd_result := self.coordinator.get_last_command_result()) is not None:
+            attributes["last_command_result"] = cmd_result
         return attributes
 
     async def _async_send_command(self, command: MowerCommand, label: str) -> None:
@@ -135,7 +137,37 @@ class NavimowLawnMower(CoordinatorEntity[NavimowCoordinator], LawnMowerEntity):
         await self.coordinator._async_ensure_valid_token()
         await self._api.async_send_command(self._device_id, command)
         _LOGGER.info("%s for device %s", label, self._device_id)
+        await self._async_query_command_result(command)
         await self.coordinator.async_request_refresh()
+
+    async def _async_query_command_result(self, command: MowerCommand) -> None:
+        """Best-effort verification via responseCommands (fork addition).
+
+        The endpoint may lag the command or return nothing; every failure is
+        non-fatal. Whatever came back is exposed as the entity's
+        last_command_result attribute.
+        """
+        try:
+            results = await self._api.async_query_command_results(
+                [{"id": self._device_id}]
+            )
+        except Exception as err:
+            _LOGGER.debug(
+                "Command result query failed for device %s: %s",
+                self._device_id,
+                err,
+            )
+            return
+        entry = next(
+            (r for r in results if r.get("id") == self._device_id),
+            results[0] if results else None,
+        )
+        self.coordinator.set_last_command_result(
+            {"command": command.value, "result": entry}
+        )
+        _LOGGER.debug(
+            "Command result for device %s: %s", self._device_id, entry
+        )
 
     async def async_start_mowing(self) -> None:
         """Start mowing."""

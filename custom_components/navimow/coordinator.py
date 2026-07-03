@@ -88,6 +88,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.battery_refresh_seconds = battery_refresh_seconds
         self._status_fetcher = status_fetcher
         self._last_http_status: DeviceStatus | None = None
+        self._last_command_result: dict[str, Any] | None = None
         self.data: dict[str, Any] = {}
         self._last_state: DeviceStateMessage | None = None
         self._last_attributes: DeviceAttributesMessage | None = None
@@ -295,6 +296,13 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def get_last_http_status(self) -> DeviceStatus | None:
         """Full DeviceStatus from the latest HTTP poll (extra fields intact)."""
         return self._last_http_status
+
+    def set_last_command_result(self, result: dict[str, Any] | None) -> None:
+        """Store the responseCommands entry for the most recent command."""
+        self._last_command_result = result
+
+    def get_last_command_result(self) -> dict[str, Any] | None:
+        return self._last_command_result
 
     def get_device_location(self) -> dict | None:
         return self.data.get("location")
