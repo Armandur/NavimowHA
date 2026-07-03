@@ -14,6 +14,7 @@ from mower_sdk.api import MowerAPI
 from mower_sdk.models import (
     Device,
     DeviceAttributesMessage,
+    DeviceEventMessage,
     DeviceStateMessage,
     DeviceStatus,
 )
@@ -22,6 +23,7 @@ from mower_sdk.sdk import NavimowSDK
 from .const import (
     DEFAULT_BATTERY_REFRESH_SECONDS,
     DOMAIN,
+    EVENT_NAVIMOW,
     HTTP_FALLBACK_MIN_INTERVAL,
     MQTT_STALE_SECONDS,
     UPDATE_INTERVAL,
@@ -92,6 +94,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.data: dict[str, Any] = {}
         self._last_state: DeviceStateMessage | None = None
         self._last_attributes: DeviceAttributesMessage | None = None
+        self._last_event: DeviceEventMessage | None = None
         self._last_location: dict[str, Any] | None = None
         self._dock: dict[str, Any] | None = None  # learned {"x","y","n"}
         self._last_mqtt_update: float | None = None
@@ -102,6 +105,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Register callbacks from SDK."""
         self.sdk.on_state(self._handle_state)
         self.sdk.on_attributes(self._handle_attributes)
+        self.sdk.on_event(self._handle_event)
 
     def _build_data(self) -> dict[str, Any]:
         return {
@@ -272,6 +276,36 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_attributes = attrs
         self.async_set_updated_data(self._build_data())
 
+    def _handle_event(self, event: DeviceEventMessage) -> None:
+        if event.device_id != self.device.id:
+            return
+        _LOGGER.debug(
+            "MQTT event received: device=%s event=%s level=%s",
+            event.device_id,
+            event.event,
+            event.level,
+        )
+        self._last_mqtt_update = time.monotonic()
+        self.hass.loop.call_soon_threadsafe(self._update_from_event, event)
+
+    def _update_from_event(self, event: DeviceEventMessage) -> None:
+        """Store the event, notify entities, and fire it on the HA bus."""
+        self._last_event = event
+        self.hass.bus.async_fire(
+            EVENT_NAVIMOW,
+            {
+                "device_id": self.device.id,
+                "device_name": self.device.name,
+                "type": event.type,
+                "event": event.event,
+                "level": event.level,
+                "message": event.message,
+                "params": event.params,
+                "timestamp": event.timestamp,
+            },
+        )
+        self.async_set_updated_data(self._build_data())
+
     def ingest_location(self, location: dict) -> None:
         if not isinstance(location, dict):
             return
@@ -296,6 +330,17 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def get_last_http_status(self) -> DeviceStatus | None:
         """Full DeviceStatus from the latest HTTP poll (extra fields intact)."""
         return self._last_http_status
+
+    def get_last_event(self) -> DeviceEventMessage | None:
+        """Most recent MQTT device event (not persisted across restarts)."""
+        return self._last_event
+
+    def is_mqtt_fresh(self) -> bool:
+        """True while MQTT push data is arriving within the stale window."""
+        return (
+            self._last_mqtt_update is not None
+            and time.monotonic() - self._last_mqtt_update <= MQTT_STALE_SECONDS
+        )
 
     def set_last_command_result(self, result: dict[str, Any] | None) -> None:
         """Store the responseCommands entry for the most recent command."""

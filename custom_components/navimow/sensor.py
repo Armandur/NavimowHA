@@ -102,6 +102,14 @@ SENSOR_DESCRIPTIONS: tuple[NavimowSensorEntityDescription, ...] = (
         ),
     ),
     NavimowSensorEntityDescription(
+        key="last_event",
+        name="Last event",
+        icon="mdi:bell-alert-outline",
+        value_fn=lambda c: (
+            ev.event if (ev := c.get_last_event()) else None
+        ),
+    ),
+    NavimowSensorEntityDescription(
         key="mow_progress",
         name="Mow progress",
         icon="mdi:progress-check",
@@ -213,6 +221,17 @@ class NavimowSensor(CoordinatorEntity[NavimowCoordinator], SensorEntity):
             if status.total_mowing_time is not None:
                 attrs["total_mowing_time"] = status.total_mowing_time
             return attrs or None
+        if self.entity_description.key == "last_event":
+            ev = self.coordinator.get_last_event()
+            if not ev:
+                return None
+            return {
+                "type": ev.type,
+                "level": ev.level,
+                "message": ev.message,
+                "params": ev.params,
+                "timestamp": ev.timestamp,
+            }
         return None
 
 

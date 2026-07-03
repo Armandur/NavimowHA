@@ -4,6 +4,10 @@ from typing import Final
 
 DOMAIN: Final = "navimow"
 
+# HA bus event fired for every MQTT device event (fork addition). Payload:
+# device_id, device_name, type, event, level, message, params, timestamp.
+EVENT_NAVIMOW: Final = "navimow_event"
+
 # OAuth2 Configuration
 # 授权页面 URL（用户登录页面）
 # 添加 channel=homeassistant 以便 HA 跳转回登录页时携带渠道信息
