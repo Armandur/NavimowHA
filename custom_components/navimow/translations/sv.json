@@ -1,0 +1,57 @@
+{
+  "config": {
+    "step": {
+      "oauth2_authorize": {
+        "description": "Klicka på 'Bekräfta' för att ge Home Assistant åtkomst till ditt Navimow-konto.\n\nDu skickas vidare till Navimows inloggningssida för att slutföra autentiseringen."
+      },
+      "user": {
+        "title": "Konfiguration av Navimow-integrationen",
+        "description": "Konfigurera integrationen för Navimow-robotgräsklippare"
+      },
+      "reauth_confirm": {
+        "title": "Ny autentisering krävs",
+        "description": "Din Navimow-autentisering har gått ut. Autentisera dig på nytt för att fortsätta använda integrationen."
+      }
+    },
+    "error": {
+      "authorization_failed": "Auktoriseringen misslyckades. Försök igen.",
+      "token_exchange_failed": "Kunde inte växla auktoriseringskoden mot en token.",
+      "callback_failed": "Kunde inte hantera OAuth2-återanropet.",
+      "cannot_connect": "Kan inte ansluta till Navimow-tjänsten.",
+      "invalid_auth": "Autentiseringen misslyckades. Kontrollera din konfiguration.",
+      "unknown": "Ett okänt fel uppstod.",
+      "missing_config": "Konfiguration saknas. Ange CLIENT_ID och CLIENT_SECRET i const.py."
+    },
+    "abort": {
+      "single_instance_allowed": "Endast en Navimow-instans tillåts.",
+      "already_configured": "Navimow är redan konfigurerad.",
+      "reauth_successful": "Den nya autentiseringen lyckades."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Navimow-alternativ",
+        "description": "Konfigurera alternativ för Navimow-integrationen. GPS-kalibrering (valfritt): para ihop två platsers lokala klipparkoordinater (sensorerna position_x/_y eller dock_x/_y) med deras latitud/longitud för att placera klipparen på kartan. Alla åtta fälten krävs för positionsspårningen.",
+        "data": {
+          "battery_refresh_seconds": "Uppdateringsintervall för batteri (sekunder, 0 = av)",
+          "gps_ref1_x": "Referens 1: lokal X (m)",
+          "gps_ref1_y": "Referens 1: lokal Y (m)",
+          "gps_ref1_lat": "Referens 1: latitud",
+          "gps_ref1_lon": "Referens 1: longitud",
+          "gps_ref2_x": "Referens 2: lokal X (m)",
+          "gps_ref2_y": "Referens 2: lokal Y (m)",
+          "gps_ref2_lat": "Referens 2: latitud",
+          "gps_ref2_lon": "Referens 2: longitud"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {
+        "name": "Batteri"
+      }
+    }
+  }
+}
