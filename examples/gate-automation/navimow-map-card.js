@@ -1,5 +1,6 @@
 /*
- * Navimow Map Card  (v4 — multi-session trails + mow controls + zone names)
+ * Navimow Map Card  (v4.1 — multi-session trails, mow controls, zone names,
+ *                    photo marker)
  *
  * A self-contained Lovelace custom card. Plots the mower's local (x,y) meter
  * coordinates with a heading arrow, the path of the CURRENT mowing session in
@@ -40,6 +41,10 @@
  *   zone_names:               # map zone/partition ids to friendly names in
  *     "3": Front lawn         #   the footer; unmapped ids show as the raw id
  *     "5": Back yard
+ *   marker_image:             # image drawn as the mower marker instead of the
+ *                             #   dot, e.g. /local/mower.png. Must depict the
+ *                             #   mower pointing UP; it rotates with heading
+ *   marker_size: 60           # marker image size in map units (viewBox is 1000)
  *   dock_x_entity:            # integration dock sensors (auto-derived from
  *   dock_y_entity:            #   x_entity/y_entity names if not set)
  *   dock_x:                   # manual dock override (meters); disables auto-learn
@@ -74,6 +79,8 @@ class NavimowMapCard extends HTMLElement {
       session_count: 5,
       show_controls: true,
       zone_names: null,
+      marker_image: null,
+      marker_size: 60,
       dock_x_entity: null,
       dock_y_entity: null,
       dock_x: null,
@@ -94,6 +101,7 @@ class NavimowMapCard extends HTMLElement {
     this._pastTrails = [];      // last N completed sessions, oldest first
     this._lastKey = null;
     this._prevState = null;
+    this._mwrAngle = null;      // last marker rotation (deg), for unwrapping
     this._histLoaded = false;
     this._imgMeta = null;       // {w, h} once the overlay image loads
     this._imgLoading = false;
@@ -129,6 +137,7 @@ class NavimowMapCard extends HTMLElement {
         svg.nm-mwr { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
           display: block; pointer-events: none; }
         .nm-mwr-grp { transition: transform 1.8s linear; }
+        .nm-mwr-rot { transition: transform 1.8s linear; }
         .nm-ftr { margin-top: 8px; font-size: 0.9em; color: var(--secondary-text-color);
           display: flex; gap: 14px; flex-wrap: wrap; }
         .nm-ftr b { color: var(--primary-text-color); }
@@ -477,11 +486,12 @@ class NavimowMapCard extends HTMLElement {
     if (wpos !== null) {
       const px = tx(wpos[0]), py = ty(wpos[1]);
 
-      // Build heading arrow content (relative to marker centre, no offset)
-      let mwrInner = '';
+      // Heading as a screen-space unit vector (rotated into the image frame
+      // when drawing upright over a calibrated overlay)
+      let ux = null, uy = null;
       if (headingDeg !== null) {
         const rad = headingDeg * Math.PI / 180;
-        let ux = Math.cos(rad), uy = -Math.sin(rad);
+        ux = Math.cos(rad); uy = -Math.sin(rad);
         if (upright) {
           const { ar, ai } = this._cal;
           const den = ar * ar + ai * ai;
@@ -490,9 +500,7 @@ class NavimowMapCard extends HTMLElement {
           const n = Math.hypot(dpr, dpi) || 1;
           ux = dpr / n; uy = -dpi / n;
         }
-        mwrInner += `<line x1="0" y1="0" x2="${(ux * 34).toFixed(1)}" y2="${(uy * 34).toFixed(1)}" stroke="var(--accent-color, #ff9800)" stroke-width="7" stroke-linecap="round"/>`;
       }
-      mwrInner += `<circle r="15" fill="var(--accent-color, #ff9800)" stroke="white" stroke-width="3"/>`;
 
       let grp = mwrSvg.querySelector('.nm-mwr-grp');
       if (!grp) {
@@ -507,7 +515,40 @@ class NavimowMapCard extends HTMLElement {
       } else {
         grp.style.transform = `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px)`;
       }
-      grp.innerHTML = mwrInner;
+
+      if (c.marker_image) {
+        // Photo marker (image must point UP), rotated with the heading. The
+        // element persists across updates so both the group's translation
+        // and this rotation animate via CSS transitions.
+        let rot = grp.querySelector('.nm-mwr-rot');
+        if (!rot) {
+          const s = c.marker_size;
+          grp.innerHTML = `<g class="nm-mwr-rot"><image href="${c.marker_image}"
+            x="${(-s / 2).toFixed(1)}" y="${(-s / 2).toFixed(1)}"
+            width="${s}" height="${s}"/></g>`;
+          rot = grp.querySelector('.nm-mwr-rot');
+          this._mwrAngle = null;
+        }
+        if (ux !== null) {
+          // unwrap relative to the previous angle so the transition takes
+          // the short way around instead of spinning through 360
+          let angle = Math.atan2(uy, ux) * 180 / Math.PI + 90;
+          if (this._mwrAngle !== null) {
+            while (angle - this._mwrAngle > 180) angle -= 360;
+            while (angle - this._mwrAngle < -180) angle += 360;
+          }
+          this._mwrAngle = angle;
+          rot.style.transform = `rotate(${angle.toFixed(1)}deg)`;
+        }
+      } else {
+        // Default marker: heading arrow + dot (rebuilt each update)
+        let mwrInner = '';
+        if (ux !== null) {
+          mwrInner += `<line x1="0" y1="0" x2="${(ux * 34).toFixed(1)}" y2="${(uy * 34).toFixed(1)}" stroke="var(--accent-color, #ff9800)" stroke-width="7" stroke-linecap="round"/>`;
+        }
+        mwrInner += `<circle r="15" fill="var(--accent-color, #ff9800)" stroke="white" stroke-width="3"/>`;
+        grp.innerHTML = mwrInner;
+      }
     } else {
       // No position — remove the marker
       const grp = mwrSvg.querySelector('.nm-mwr-grp');

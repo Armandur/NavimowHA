@@ -194,6 +194,8 @@ position sensors; if it isn't, the card falls back to a live-only trail.
 | `session_count` | `5` | How many completed sessions to draw in grey behind the current one. `0` restores the pre-v4 behavior (current session only). |
 | `show_controls` | `true` | Show Mow / Pause / Dock buttons under the footer. They call `lawn_mower.start_mowing` / `pause` / `dock` on `status_entity`. |
 | `zone_names` | — | Map of zone/partition id → friendly name, used in the footer's Zone field. Ids without a mapping show as the raw id. |
+| `marker_image` | — | Image drawn as the mower marker instead of the dot, e.g. `/local/mower.png`. The image must depict the mower **pointing up**; it rotates smoothly with the heading (added in v4.1). |
+| `marker_size` | `60` | Marker image size in map units (the map viewBox is 1000 wide). |
 
 Full example:
 
@@ -216,6 +218,8 @@ zone_names:
   "3": Left street
   "5": Right street
   "13": Yard
+marker_image: /local/mower.png   # optional photo marker, image pointing up
+marker_size: 60
 ```
 
 ### Satellite / aerial overlay

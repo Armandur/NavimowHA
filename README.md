@@ -112,6 +112,10 @@ zone_names:             # map partition ids to friendly names in the footer;
   "3": Left street      #   unmapped ids show as the raw id
   "5": Right street
   "13": Yard
+marker_image: /local/mower.png  # v4.1: photo marker instead of the dot; the
+                                #   image must point UP and rotates with the
+                                #   mower's heading
+marker_size: 60                 # marker size in map units (viewBox is 1000)
 ```
 
 See [`examples/gate-automation/SETUP.md`](examples/gate-automation/SETUP.md)
