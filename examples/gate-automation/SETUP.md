@@ -4,7 +4,9 @@ Automatically open a gate so a Segway Navimow can pass through to mow zones on
 the far side of the gate from its dock, and close it again once the mower is
 docked. Built around four pieces:
 
-1. The **position/zone fork** of the Navimow integration (provides the zone sensor).
+1. The **position/zone fork** of the Navimow integration (provides the zone sensor):
+   <https://github.com/Armandur/NavimowHA> (this repo, continuing
+   [pgoutsos/NavimowHA](https://github.com/pgoutsos/NavimowHA)).
 2. A **switch** in Home Assistant that *pulses* your gate opener (LocalTuya, ESPHome, Shelly, etc.).
 3. Two **contact sensors** for the gate's fully-open and fully-closed positions.
 4. This **package** (`navimow_gate.yaml`) + an optional dashboard card and live map card.
@@ -19,7 +21,7 @@ docked. Built around four pieces:
 ## Prerequisites
 
 - **Home Assistant 2026.1.0+** with the Navimow integration installed from the
-  position/zone fork: <https://github.com/pgoutsos/NavimowHA>. After setup you'll
+  position/zone fork: <https://github.com/Armandur/NavimowHA>. After setup you'll
   have, per mower: `lawn_mower.<name>`, `sensor.<name>_zone`,
   `sensor.<name>_position_x/_y`, `sensor.<name>_heading`, and (v1.1.0+position.4)
   `sensor.<name>_dock_x/_dock_y` — the dock position, auto-learned by averaging
@@ -156,25 +158,27 @@ cards:
       - type: button
         name: Open Gate
         icon: mdi:gate-open
-        tap_action: { action: perform-action, perform_action: script.navimow_gate_ensure_open, confirmation: { text: Open the garden gate? } }
+        tap_action: { action: perform-action, perform_action: script.navimow_gate_ensure_open, confirmation: { text: "Open the garden gate?" } }
       - type: button
         name: Close Gate
         icon: mdi:gate
-        tap_action: { action: perform-action, perform_action: script.navimow_gate_ensure_closed, confirmation: { text: Close the garden gate? } }
+        tap_action: { action: perform-action, perform_action: script.navimow_gate_ensure_closed, confirmation: { text: "Close the garden gate?" } }
 ```
 
 ## Optional — live position map card
 
-`navimow-map-card.js` plots the mower's live position, heading, and the path of
-the **current mowing session** — optionally over a satellite image of your
-property.
+`navimow-map-card.js` (v4) plots the mower's live position, heading, the path
+of the **current mowing session** in the accent color, and the last N
+**completed sessions** in muted grey — optionally over a satellite image of
+your property. It can also show Mow / Pause / Dock buttons.
 
-The session path is rebuilt from Home Assistant's recorder each time the card
-loads (it finds the most recent docked → mowing transition and replays the
-position history since), so it survives page reloads, navigating away, and
-shows the same path on every device. It resets automatically when a new session
-starts. Requires the recorder (on by default) to be recording the position
-sensors; if it isn't, the card falls back to a live-only trail.
+All session paths are rebuilt from Home Assistant's recorder each time the
+card loads (it finds the docked → mowing(→ docked) cycles within
+`history_hours` and replays the position history for each), so they survive
+page reloads, navigating away, and show the same paths on every device. When
+a new session starts, the finished path becomes a grey session and the
+current one resets. Requires the recorder (on by default) to be recording the
+position sensors; if it isn't, the card falls back to a live-only trail.
 
 1. Copy it to `<config>/www/navimow-map-card.js`.
 2. Settings → Dashboards → ⋮ → Resources → add `/local/navimow-map-card.js?v=1`
@@ -182,6 +186,37 @@ sensors; if it isn't, the card falls back to a live-only trail.
    when you update the file).
 3. Add a card: `type: custom:navimow-map-card` (override `x_entity`, `y_entity`,
    `heading_entity`, `zone_entity` if your entity IDs differ from the defaults).
+
+### Options added in v4
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `session_count` | `5` | How many completed sessions to draw in grey behind the current one. `0` restores the pre-v4 behavior (current session only). |
+| `show_controls` | `true` | Show Mow / Pause / Dock buttons under the footer. They call `lawn_mower.start_mowing` / `pause` / `dock` on `status_entity`. |
+| `zone_names` | — | Map of zone/partition id → friendly name, used in the footer's Zone field. Ids without a mapping show as the raw id. |
+
+Full example:
+
+```yaml
+type: custom:navimow-map-card
+title: Navimow map
+x_entity: sensor.tont_position_x
+y_entity: sensor.tont_position_y
+heading_entity: sensor.tont_heading
+zone_entity: sensor.tont_zone
+status_entity: lawn_mower.tont
+battery_entity: sensor.tont_battery
+dock_x_entity: sensor.tont_dock_x
+dock_y_entity: sensor.tont_dock_y
+trail_length: 2000
+history_hours: 48
+session_count: 6
+show_controls: true
+zone_names:
+  "3": Left street
+  "5": Right street
+  "13": Yard
+```
 
 ### Satellite / aerial overlay
 

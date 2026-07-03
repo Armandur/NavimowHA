@@ -6,12 +6,14 @@
 
 Monitor and control Navimow robotic mowers in Home Assistant.
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=pgoutsos&repository=NavimowHA&category=Integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Armandur&repository=NavimowHA&category=Integration)
 
-> **This is a fork of [segwaynavimow/NavimowHA](https://github.com/segwaynavimow/NavimowHA).**
-> It adds **real-time position and current mowing-zone sensors** on top of the
-> official integration. All credit for the base integration goes to the Segway
-> Navimow team. See [What this fork adds](#what-this-fork-adds-) below.
+> **This is a fork of [pgoutsos/NavimowHA](https://github.com/pgoutsos/NavimowHA),
+> itself a fork of [segwaynavimow/NavimowHA](https://github.com/segwaynavimow/NavimowHA).**
+> See [Credits](#credits-) for the full lineage. On top of the position/zone
+> sensors it adds a multi-session map card with mow controls and a
+> configurable battery refresh. See
+> [What this fork adds](#what-this-fork-adds-) below.
 
 ## What this fork adds ✨
 
@@ -38,6 +40,34 @@ mower is active):
 These unlock zone-aware and position-aware automations — for example opening a
 gate when the mower crosses between zones, geofencing, or live mapping. The
 coordinates are a **local Cartesian grid in meters**, not latitude/longitude.
+
+### Added in this fork (Armandur)
+
+**Configurable battery refresh.** MQTT state messages arrive rarely (mostly on
+state transitions), so the battery sensor could lag by hours. The integration
+now polls the HTTP status endpoint to refresh the battery reading —
+default every **120 seconds**, configurable in Settings → Devices & Services →
+Navimow → Configure (`battery_refresh_seconds`, `0` disables polling).
+
+**Map card v4** (`examples/gate-automation/navimow-map-card.js`) — three new
+options, all backward-compatible:
+
+```yaml
+type: custom:navimow-map-card
+# ... entities as before ...
+session_count: 6        # default 5 — completed sessions drawn in grey behind
+                        #   the current one; 0 = pre-v4 current-session-only
+show_controls: true     # default true — Mow / Pause / Dock buttons that call
+                        #   lawn_mower.start_mowing / pause / dock
+zone_names:             # map partition ids to friendly names in the footer;
+  "3": Left street      #   unmapped ids show as the raw id
+  "5": Right street
+  "13": Yard
+```
+
+See [`examples/gate-automation/SETUP.md`](examples/gate-automation/SETUP.md)
+for the full card documentation, and [`NOTES.md`](NOTES.md) for research notes
+on zone-specific mow commands, edge mowing, and `mowStartType`.
 
 ### How it works
 
@@ -78,7 +108,7 @@ This integration is not in the default HACS store; add this fork as a custom
 repository:
 
 1. HACS → top-right menu → **Custom repositories**
-2. Repository: `https://github.com/pgoutsos/NavimowHA`
+2. Repository: `https://github.com/Armandur/NavimowHA`
 3. Category: **Integration**
 4. Search for `Navimow` in HACS and download it
 5. Restart Home Assistant
@@ -126,10 +156,20 @@ that `…/realtimeDate/location` messages are arriving.
 This integration uses the `navimow-sdk` package to communicate with Navimow
 mowers. This fork does **not** modify the SDK.
 
+## Credits 🙏
+
+| Who | What |
+| --- | --- |
+| [segwaynavimow](https://github.com/segwaynavimow/NavimowHA) | The original official integration — all credit for the base integration goes to the Segway Navimow team |
+| [pgoutsos](https://github.com/pgoutsos/NavimowHA) | The position/zone fork: real-time position, zone, heading, dock sensors, the gate-automation example, and map card v1–v3 |
+| toomasv (HA community forum) | Inspiration and reference implementation for the v4 card's multi-session trails, mow controls, zone names, and the faster battery refresh |
+| [Armandur](https://github.com/Armandur/NavimowHA) | This fork: map card v4, configurable battery refresh interval |
+
 ## Relationship to upstream & contributing back
 
-This fork tracks [segwaynavimow/NavimowHA](https://github.com/segwaynavimow/NavimowHA).
+This fork tracks [pgoutsos/NavimowHA](https://github.com/pgoutsos/NavimowHA),
+which tracks [segwaynavimow/NavimowHA](https://github.com/segwaynavimow/NavimowHA).
 The position/zone functionality is a candidate for upstreaming — if/when the
 official integration adds it natively, this fork can be retired in favor of the
-official release. Issues and PRs specific to the position/zone sensors can be
+official release. Issues and PRs specific to this fork's additions can be
 filed against this repository; general integration issues belong upstream.
