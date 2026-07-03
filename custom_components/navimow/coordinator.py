@@ -1,4 +1,5 @@
 """DataUpdateCoordinator for Navimow integration."""
+import asyncio
 import logging
 import time
 from datetime import timedelta
@@ -29,6 +30,37 @@ from .location import DOCKED_STATES, update_dock_estimate
 
 _LOGGER = logging.getLogger(__name__)
 
+# Coordinators poll on their own schedules; fetches landing within this many
+# seconds of each other share one batched getVehicleStatus request.
+FETCH_DEDUP_WINDOW = 10
+
+
+class NavimowStatusFetcher:
+    """Batched HTTP status fetch shared by all coordinators of an entry.
+
+    Every device's status comes back from one getVehicleStatus call, so with
+    multiple mowers the periodic battery refresh costs a single request
+    instead of one per device.
+    """
+
+    def __init__(self, api: MowerAPI, device_ids: list[str]) -> None:
+        self._api = api
+        self._device_ids = device_ids
+        self._lock = asyncio.Lock()
+        self._statuses: dict[str, DeviceStatus] = {}
+        self._fetched_at: float | None = None
+
+    async def async_get(self, device_id: str) -> DeviceStatus | None:
+        """Status for one device, fetching all at most once per dedup window."""
+        async with self._lock:
+            now = time.monotonic()
+            if self._fetched_at is None or now - self._fetched_at > FETCH_DEDUP_WINDOW:
+                self._statuses = await self._api.async_get_device_statuses(
+                    self._device_ids
+                )
+                self._fetched_at = time.monotonic()
+            return self._statuses.get(device_id)
+
 
 class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinator for Navimow data updates."""
@@ -41,6 +73,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         device: Device,
         oauth_session: config_entry_oauth2_flow.OAuth2Session | None = None,
         battery_refresh_seconds: int = DEFAULT_BATTERY_REFRESH_SECONDS,
+        status_fetcher: NavimowStatusFetcher | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -53,6 +86,8 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.device = device
         self.oauth_session = oauth_session
         self.battery_refresh_seconds = battery_refresh_seconds
+        self._status_fetcher = status_fetcher
+        self._last_http_status: DeviceStatus | None = None
         self.data: dict[str, Any] = {}
         self._last_state: DeviceStateMessage | None = None
         self._last_attributes: DeviceAttributesMessage | None = None
@@ -167,16 +202,25 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         if (is_mqtt_stale and can_http_fetch) or battery_due:
             try:
-                status = await self.api.async_get_device_status(self.device.id)
-                http_state = self._device_status_to_state(status)
+                if self._status_fetcher is not None:
+                    status = await self._status_fetcher.async_get(self.device.id)
+                else:
+                    status = await self.api.async_get_device_status(self.device.id)
                 self._last_http_fetch = now
-                if is_mqtt_stale or self._last_state is None:
-                    self._last_state = http_state
-                    self._last_data_source = "http_fallback"
-                elif http_state.battery is not None:
-                    # MQTT state is fresh — only refresh the slow-moving
-                    # battery reading, keep the live state/activity intact
-                    self._last_state.battery = http_state.battery
+                if status is None:
+                    _LOGGER.warning(
+                        "No status for device %s in batched response", self.device.id
+                    )
+                else:
+                    self._last_http_status = status
+                    http_state = self._device_status_to_state(status)
+                    if is_mqtt_stale or self._last_state is None:
+                        self._last_state = http_state
+                        self._last_data_source = "http_fallback"
+                    elif http_state.battery is not None:
+                        # MQTT state is fresh — only refresh the slow-moving
+                        # battery reading, keep the live state/activity intact
+                        self._last_state.battery = http_state.battery
             except ConfigEntryAuthFailed:
                 raise
             except Exception as err:
@@ -247,6 +291,10 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def get_dock_position(self) -> dict | None:
         """Learned dock position {"x","y","n"}, or None if never seen docked."""
         return self._dock
+
+    def get_last_http_status(self) -> DeviceStatus | None:
+        """Full DeviceStatus from the latest HTTP poll (extra fields intact)."""
+        return self._last_http_status
 
     def get_device_location(self) -> dict | None:
         return self.data.get("location")

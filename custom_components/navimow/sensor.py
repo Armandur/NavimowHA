@@ -181,20 +181,39 @@ class NavimowSensor(CoordinatorEntity[NavimowCoordinator], SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Expose the extra real-time location fields on the zone sensor."""
-        if self.entity_description.key != "zone":
-            return None
-        loc = self.coordinator.get_device_location()
-        if not loc:
-            return None
-        return {
-            "partition_ids": loc.get("partition_ids"),
-            "task_delay": loc.get("task_delay"),
-            "vehicle_state": loc.get("vehicle_state"),
-            "pose_time": loc.get("pose_time"),
-            "mow_boundary": loc.get("mow_boundary"),
-            "mow_progress": loc.get("mow_progress"),
-        }
+        """Expose extra fields on the zone and battery sensors."""
+        if self.entity_description.key == "zone":
+            loc = self.coordinator.get_device_location()
+            if not loc:
+                return None
+            return {
+                "partition_ids": loc.get("partition_ids"),
+                "task_delay": loc.get("task_delay"),
+                "vehicle_state": loc.get("vehicle_state"),
+                "pose_time": loc.get("pose_time"),
+                "mow_boundary": loc.get("mow_boundary"),
+                "mow_progress": loc.get("mow_progress"),
+            }
+        if self.entity_description.key == "battery":
+            # Extra fields from the HTTP status poll (fork addition). Only
+            # keys the cloud actually returned are exposed.
+            status = self.coordinator.get_last_http_status()
+            if not status:
+                return None
+            attrs: dict[str, Any] = {}
+            extra = status.extra or {}
+            if "descriptiveCapacityRemaining" in extra:
+                attrs["descriptive_level"] = extra["descriptiveCapacityRemaining"]
+            if "capacityRemaining" in extra:
+                attrs["capacity_remaining"] = extra["capacityRemaining"]
+            if "vehicleState" in extra:
+                attrs["vehicle_state"] = extra["vehicleState"]
+            if status.mowing_time is not None:
+                attrs["mowing_time"] = status.mowing_time
+            if status.total_mowing_time is not None:
+                attrs["total_mowing_time"] = status.total_mowing_time
+            return attrs or None
+        return None
 
 
 class NavimowDockSensor(NavimowSensor, RestoreSensor):
