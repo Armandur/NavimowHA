@@ -51,6 +51,10 @@ All optional; defaults shown.
 | `zone_names` | — | Map of zone/partition id → friendly name for the footer; unmapped ids show as the raw id. |
 | `marker_image` | — | Image drawn as the mower marker instead of the dot, e.g. `/local/i208_awd.png`. Must depict the mower **pointing up**; it rotates smoothly with the heading. See [markers/](markers/). |
 | `marker_size` | `60` | Marker image size in map units (the map viewBox is 1000 wide). |
+| `labels` | — | Override any UI string (English defaults). Keys: `mow`, `pause`, `dock` (buttons); `zone`, `status`, `position`, `battery` (footer); `dock_marker` (text by the dock marker, `""` hides it). Set only the keys you want to change. |
+| `status_names` | — | Map raw mower status → display text (`docked`, `mowing`, `paused`, `returning`, `charging`, `error`); unmapped statuses show raw. |
+| `dock_image` | — | Image for the dock marker instead of the circle, e.g. `/local/dock.png`. |
+| `dock_size` | `40` | Dock image size in map units. |
 | `dock_x_entity` / `dock_y_entity` | auto | Integration dock sensors; derived from `x_entity`/`y_entity` names when unset. |
 | `dock_x` / `dock_y` | — | Manual dock override in meters (both must be set; disables auto-learning). |
 | `dock_samples` | `25` | Rolling samples averaged while docked (local-learning fallback). |
@@ -82,6 +86,28 @@ zone_names:
   "13": Yard
 marker_image: /local/i208_awd.png
 marker_size: 60
+```
+
+### Localizing the labels
+
+The card is English by default. Translate any subset via `labels` and
+`status_names` — for example, in Swedish:
+
+```yaml
+labels:
+  mow: Klipp
+  pause: Pausa
+  dock: Ladda
+  zone: Zon
+  battery: Batteri
+  dock_marker: Laddstation
+status_names:
+  mowing: Klipper
+  docked: Dockad
+  paused: Pausad
+  returning: Återvänder
+  charging: Laddar
+  error: Fel
 ```
 
 ## Marker images

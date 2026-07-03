@@ -1,6 +1,6 @@
 /*
- * Navimow Map Card  (v4.1 — multi-session trails, mow controls, zone names,
- *                    photo marker)
+ * Navimow Map Card  (v4.2 — multi-session trails, mow controls, zone names,
+ *                    photo marker, localizable labels)
  *
  * A self-contained Lovelace custom card. Plots the mower's local (x,y) meter
  * coordinates with a heading arrow, the path of the CURRENT mowing session in
@@ -45,11 +45,26 @@
  *                             #   dot, e.g. /local/mower.png. Must depict the
  *                             #   mower pointing UP; it rotates with heading
  *   marker_size: 60           # marker image size in map units (viewBox is 1000)
+ *   labels:                   # override any UI string (English defaults shown);
+ *     mow: Mow                #   set only the ones you want to translate
+ *     pause: Pause
+ *     dock: Dock
+ *     zone: Zone
+ *     status: Status
+ *     position: Pos
+ *     battery: Battery
+ *     dock_marker: dock       #   text next to the dock marker ("" hides it)
+ *   status_names:             # map raw mower status to display text, e.g.
+ *     docked: Docked          #   docked/mowing/paused/returning/charging/error
+ *     returning: Returning    #   unmapped statuses show raw
  *   dock_x_entity:            # integration dock sensors (auto-derived from
  *   dock_y_entity:            #   x_entity/y_entity names if not set)
  *   dock_x:                   # manual dock override (meters); disables auto-learn
  *   dock_y:                   #   (both must be set)
  *   dock_samples: 25          # rolling samples averaged while docked (fallback)
+ *   dock_image:               # image for the dock marker instead of the circle,
+ *                             #   e.g. /local/dock.png
+ *   dock_size: 40             # dock image size in map units (viewBox is 1000)
  *
  * Satellite / aerial overlay (optional):
  *   overlay_image: /local/yard.png    # your property image under /config/www
@@ -81,17 +96,32 @@ class NavimowMapCard extends HTMLElement {
       zone_names: null,
       marker_image: null,
       marker_size: 60,
+      status_names: null,
       dock_x_entity: null,
       dock_y_entity: null,
       dock_x: null,
       dock_y: null,
       dock_samples: 25,
+      dock_image: null,
+      dock_size: 40,
       overlay_image: null,
       overlay_opacity: 0.9,
       calibration: null,
       straighten: true,   // draw the image upright (rotate the trail instead);
                           // set false to keep the mower's coordinate frame
     }, config || {});
+    // UI strings default to English; a partial `labels:` overrides only the
+    // keys given, so the rest stay English (upstream default).
+    this._config.labels = Object.assign({
+      mow: 'Mow',
+      pause: 'Pause',
+      dock: 'Dock',
+      zone: 'Zone',
+      status: 'Status',
+      position: 'Pos',
+      battery: 'Battery',
+      dock_marker: 'dock',
+    }, (config && config.labels) || {});
     // derive dock sensor names from the position sensors if not configured
     if (!this._config.dock_x_entity && /position_x/.test(this._config.x_entity))
       this._config.dock_x_entity = this._config.x_entity.replace('position_x', 'dock_x');
@@ -123,9 +153,9 @@ class NavimowMapCard extends HTMLElement {
         <div class="nm-ftr"></div>
         ${this._config.show_controls !== false ? `
         <div class="nm-btns">
-          <button class="nm-btn nm-btn-mow" type="button">Mow</button>
-          <button class="nm-btn nm-btn-pause" type="button">Pause</button>
-          <button class="nm-btn nm-btn-dock" type="button">Dock</button>
+          <button class="nm-btn nm-btn-mow" type="button">${this._escHtml(this._config.labels.mow)}</button>
+          <button class="nm-btn nm-btn-pause" type="button">${this._escHtml(this._config.labels.pause)}</button>
+          <button class="nm-btn nm-btn-dock" type="button">${this._escHtml(this._config.labels.dock)}</button>
         </div>` : ''}
       </ha-card>
       <style>
@@ -210,6 +240,10 @@ class NavimowMapCard extends HTMLElement {
     const qr = (wr * c.ar + wi * c.ai) / den;
     const qi = (wi * c.ar - wr * c.ai) / den;
     return [qr, -qi]; // flip back to image y-down
+  }
+
+  _escHtml(t) {
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   _num(entity) {
@@ -362,16 +396,21 @@ class NavimowMapCard extends HTMLElement {
     }
 
     this.querySelector('.nm-hdr').textContent = c.title;
-    // map the raw partition id to a friendly name; fall back to the raw id
+    // map the raw partition id / status to friendly text; fall back to raw
     const zoneName = (c.zone_names && c.zone_names[zone] != null)
       ? String(c.zone_names[zone]) : zone;
-    const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const statusName = (c.status_names && c.status_names[status] != null)
+      ? String(c.status_names[status]) : status;
+    const esc = t => this._escHtml(t);
+    const L = c.labels;
     const parts = [
-      `Zone: <b>${esc(zoneName)}</b>`,
-      `Status: <b>${status}</b>`,
-      (x !== null && y !== null) ? `Pos: <b>${x.toFixed(1)}, ${y.toFixed(1)} m</b>` : `Pos: <b>—</b>`,
+      `${esc(L.zone)}: <b>${esc(zoneName)}</b>`,
+      `${esc(L.status)}: <b>${esc(statusName)}</b>`,
+      (x !== null && y !== null)
+        ? `${esc(L.position)}: <b>${x.toFixed(1)}, ${y.toFixed(1)} m</b>`
+        : `${esc(L.position)}: <b>—</b>`,
     ];
-    if (batt !== null) parts.push(`Battery: <b>${batt}%</b>`);
+    if (batt !== null) parts.push(`${esc(L.battery)}: <b>${batt}%</b>`);
     this.querySelector('.nm-ftr').innerHTML = parts.join('');
 
     const dock = (c.dock_x !== null && c.dock_y !== null)
@@ -474,10 +513,20 @@ class NavimowMapCard extends HTMLElement {
       s += `<path d="${toPath(wpts)}" fill="none" stroke="var(--primary-color)" stroke-width="4" stroke-opacity="0.55" stroke-linejoin="round" stroke-linecap="round"/>`;
     }
     // dock marker (configured > auto-learned > origin fallback)
-    s += `<g transform="translate(${tx(wdock[0]).toFixed(1)},${ty(wdock[1]).toFixed(1)})">
-            <circle r="10" fill="none" stroke="${overlayReady ? 'white' : 'var(--secondary-text-color)'}" stroke-width="3"/>
-            <text y="-16" font-size="26" text-anchor="middle" fill="${overlayReady ? 'white' : 'var(--secondary-text-color)'}"${overlayReady ? ' style="paint-order:stroke" stroke="rgba(0,0,0,0.6)" stroke-width="4"' : ''}>dock</text>
-          </g>`;
+    const dockColor = overlayReady ? 'white' : 'var(--secondary-text-color)';
+    const dockLabel = this._escHtml(c.labels.dock_marker);
+    const labelStroke = overlayReady
+      ? ' style="paint-order:stroke" stroke="rgba(0,0,0,0.6)" stroke-width="4"' : '';
+    s += `<g transform="translate(${tx(wdock[0]).toFixed(1)},${ty(wdock[1]).toFixed(1)})">`;
+    if (c.dock_image) {
+      const ds = c.dock_size, labelY = -ds / 2 - 8;
+      s += `<image href="${c.dock_image}" x="${(-ds / 2).toFixed(1)}" y="${(-ds / 2).toFixed(1)}" width="${ds}" height="${ds}"/>`;
+      if (dockLabel) s += `<text y="${labelY.toFixed(1)}" font-size="26" text-anchor="middle" fill="${dockColor}"${labelStroke}>${dockLabel}</text>`;
+    } else {
+      s += `<circle r="10" fill="none" stroke="${dockColor}" stroke-width="3"/>`;
+      if (dockLabel) s += `<text y="-16" font-size="26" text-anchor="middle" fill="${dockColor}"${labelStroke}>${dockLabel}</text>`;
+    }
+    s += `</g>`;
     svg.innerHTML = s;
 
     // Mower marker lives in the persistent overlay SVG so CSS transition survives
