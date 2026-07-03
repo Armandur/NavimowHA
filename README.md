@@ -98,8 +98,8 @@ fields are set (a warning is logged and the tracker skipped if the
 calibration looks wrong, e.g. swapped lat/lon). This enables zone/geofence
 automations without the custom map card.
 
-**Map card v4** (`examples/gate-automation/navimow-map-card.js`) — three new
-options, all backward-compatible:
+**Map card v4** ([`map-card/`](map-card/)) — new options, all
+backward-compatible:
 
 ```yaml
 type: custom:navimow-map-card
@@ -118,9 +118,11 @@ marker_image: /local/mower.png  # v4.1: photo marker instead of the dot; the
 marker_size: 60                 # marker size in map units (viewBox is 1000)
 ```
 
-See [`examples/gate-automation/SETUP.md`](examples/gate-automation/SETUP.md)
-for the full card documentation, and [`NOTES.md`](NOTES.md) for research notes
-on zone-specific mow commands, edge mowing, and `mowStartType`.
+See [`map-card/README.md`](map-card/README.md) for the full card
+documentation (including ready-made marker images under
+[`map-card/markers/`](map-card/markers/)), and [`NOTES.md`](NOTES.md) for
+research notes on zone-specific mow commands, edge mowing, and
+`mowStartType`.
 
 ### How it works
 
@@ -147,8 +149,8 @@ parameterized package that uses the zone/position sensors to **automatically ope
 a gate** so the mower can reach zones on the far side of the gate from its dock,
 and close it again once docked. See
 [`examples/gate-automation/SETUP.md`](examples/gate-automation/SETUP.md) for the
-full walkthrough (it also includes a live position **map card**,
-`navimow-map-card.js`).
+full walkthrough. The live position **map card** lives separately in
+[`map-card/`](map-card/).
 
 ## Prerequisites 📋
 
