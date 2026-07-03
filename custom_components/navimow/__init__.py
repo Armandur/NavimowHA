@@ -18,6 +18,8 @@ from .const import (
     CLIENT_ID,
     CLIENT_SECRET,
     API_BASE_URL,
+    CONF_BATTERY_REFRESH_SECONDS,
+    DEFAULT_BATTERY_REFRESH_SECONDS,
     MQTT_BROKER,
     MQTT_PORT,
     MQTT_USERNAME,
@@ -367,6 +369,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_setup_services(hass, api)
         hass.async_create_task(_probe_mqtt_status(sdk))
 
+        battery_refresh_seconds = entry.options.get(
+            CONF_BATTERY_REFRESH_SECONDS, DEFAULT_BATTERY_REFRESH_SECONDS
+        )
         coordinators: dict[str, NavimowCoordinator] = {}
         for device in devices:
             coordinator = NavimowCoordinator(
@@ -375,6 +380,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 api=api,
                 device=device,
                 oauth_session=oauth_session,
+                battery_refresh_seconds=battery_refresh_seconds,
             )
             await coordinator.async_setup()
             await coordinator.async_config_entry_first_refresh()
@@ -394,6 +400,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # 转发到平台
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+        # Reload the entry when options (battery refresh interval) change
+        entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
         return True
 
     except ConfigEntryAuthFailed:
@@ -401,6 +410,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as err:
         _LOGGER.exception("Error setting up Navimow integration: %s", err)
         raise ConfigEntryNotReady(f"Error setting up integration: {err}") from err
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import voluptuous as vol
+
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
@@ -14,6 +16,8 @@ from .const import (
     CLIENT_ID,
     CLIENT_SECRET,
     API_BASE_URL,
+    CONF_BATTERY_REFRESH_SECONDS,
+    DEFAULT_BATTERY_REFRESH_SECONDS,
     MQTT_BROKER,
     MQTT_PORT,
     MQTT_USERNAME,
@@ -169,5 +173,15 @@ class NavimowOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=None,
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_BATTERY_REFRESH_SECONDS,
+                        default=self._config_entry.options.get(
+                            CONF_BATTERY_REFRESH_SECONDS,
+                            DEFAULT_BATTERY_REFRESH_SECONDS,
+                        ),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
+                }
+            ),
         )

@@ -32,7 +32,10 @@
     "step": {
       "init": {
         "title": "Navimow Options",
-        "description": "Configure Navimow integration options"
+        "description": "Configure Navimow integration options",
+        "data": {
+          "battery_refresh_seconds": "Battery refresh interval (seconds, 0 = disabled)"
+        }
       }
     }
   },

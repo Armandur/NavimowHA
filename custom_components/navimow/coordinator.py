@@ -19,6 +19,7 @@ from mower_sdk.models import (
 from mower_sdk.sdk import NavimowSDK
 
 from .const import (
+    DEFAULT_BATTERY_REFRESH_SECONDS,
     DOMAIN,
     HTTP_FALLBACK_MIN_INTERVAL,
     MQTT_STALE_SECONDS,
@@ -39,6 +40,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         api: MowerAPI,
         device: Device,
         oauth_session: config_entry_oauth2_flow.OAuth2Session | None = None,
+        battery_refresh_seconds: int = DEFAULT_BATTERY_REFRESH_SECONDS,
     ) -> None:
         super().__init__(
             hass,
@@ -50,6 +52,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api = api
         self.device = device
         self.oauth_session = oauth_session
+        self.battery_refresh_seconds = battery_refresh_seconds
         self.data: dict[str, Any] = {}
         self._last_state: DeviceStateMessage | None = None
         self._last_attributes: DeviceAttributesMessage | None = None
@@ -156,12 +159,24 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_http_fetch is None
             or now - self._last_http_fetch > HTTP_FALLBACK_MIN_INTERVAL
         )
-        if is_mqtt_stale and can_http_fetch:
+        # MQTT state messages arrive rarely, so the battery reading goes stale.
+        # Poll the HTTP status endpoint at battery_refresh_seconds (0 = off).
+        battery_due = self.battery_refresh_seconds > 0 and (
+            self._last_http_fetch is None
+            or now - self._last_http_fetch > self.battery_refresh_seconds
+        )
+        if (is_mqtt_stale and can_http_fetch) or battery_due:
             try:
                 status = await self.api.async_get_device_status(self.device.id)
-                self._last_state = self._device_status_to_state(status)
+                http_state = self._device_status_to_state(status)
                 self._last_http_fetch = now
-                self._last_data_source = "http_fallback"
+                if is_mqtt_stale or self._last_state is None:
+                    self._last_state = http_state
+                    self._last_data_source = "http_fallback"
+                elif http_state.battery is not None:
+                    # MQTT state is fresh — only refresh the slow-moving
+                    # battery reading, keep the live state/activity intact
+                    self._last_state.battery = http_state.battery
             except ConfigEntryAuthFailed:
                 raise
             except Exception as err:

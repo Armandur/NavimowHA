@@ -28,7 +28,10 @@
     "step": {
       "init": {
         "title": "Navimow 选项",
-        "description": "配置 Navimow 集成选项"
+        "description": "配置 Navimow 集成选项",
+        "data": {
+          "battery_refresh_seconds": "Battery refresh interval (seconds, 0 = disabled)"
+        }
       }
     }
   }

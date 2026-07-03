@@ -40,6 +40,13 @@ MQTT_STALE_SECONDS: Final = 300
 # HTTP 兜底最小拉取间隔（秒），避免频繁请求
 HTTP_FALLBACK_MIN_INTERVAL: Final = 3600
 
+# Battery refresh (fork addition). MQTT state messages arrive rarely (mostly on
+# state transitions), so the battery sensor can lag by hours. The coordinator
+# polls the HTTP status endpoint at this interval to refresh the battery
+# reading. Configurable via the integration's options (0 disables polling).
+CONF_BATTERY_REFRESH_SECONDS: Final = "battery_refresh_seconds"
+DEFAULT_BATTERY_REFRESH_SECONDS: Final = 120
+
 # MowerStatus 到 LawnMowerActivity 的映射
 MOWER_STATUS_TO_ACTIVITY = {
     "idle": "docked",
