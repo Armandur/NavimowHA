@@ -40,6 +40,11 @@ new service was added — this file records exactly what was checked.
 command path (none — `partitionIds` only appears in *downlink* telemetry),
 and the REST endpoint list above.
 
+Update 2026-07-03: the integration now queries `responseCommands` after every
+command (exposed as the `lawn_mower` entity's `last_command_result`
+attribute), so real payload shapes from this endpoint will accumulate in a
+live install — useful groundwork for testing the zone hypothesis below.
+
 Untested hypothesis: Google's smart-home `StartStop` trait officially supports
 `{"start": true, "zone": "<name>"}` / `"multipleZones"`, and the endpoint is
 smarthome-shaped, so the backend *may* accept a zone or partition id there.

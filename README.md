@@ -48,6 +48,18 @@ state transitions), so the battery sensor could lag by hours. The integration
 now polls the HTTP status endpoint to refresh the battery reading —
 default every **120 seconds**, configurable in Settings → Devices & Services →
 Navimow → Configure (`battery_refresh_seconds`, `0` disables polling).
+The poll is **batched**: all mowers of an account share one
+`getVehicleStatus` request per refresh.
+
+**Extra status attributes.** The battery sensor exposes whatever extra fields
+the status endpoint returns, as attributes (only when present):
+`descriptive_level` (FULL/HIGH/…), `capacity_remaining`, `vehicle_state`,
+`mowing_time`, `total_mowing_time`.
+
+**Command verification.** After every start/pause/dock command the integration
+queries the cloud's `responseCommands` endpoint (best effort) and exposes the
+result as the `lawn_mower` entity's `last_command_result` attribute — useful
+for automations that want to know a command was actually accepted.
 
 **Map card v4** (`examples/gate-automation/navimow-map-card.js`) — three new
 options, all backward-compatible:
