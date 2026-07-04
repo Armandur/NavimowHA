@@ -19,7 +19,13 @@ from .const import (
     CLIENT_SECRET,
     API_BASE_URL,
     CONF_BATTERY_REFRESH_SECONDS,
+    CONF_HTTP_FALLBACK_SECONDS,
+    CONF_MQTT_KEEPALIVE_SECONDS,
+    CONF_MQTT_STALE_SECONDS,
     DEFAULT_BATTERY_REFRESH_SECONDS,
+    DEFAULT_HTTP_FALLBACK_SECONDS,
+    DEFAULT_MQTT_KEEPALIVE_SECONDS,
+    DEFAULT_MQTT_STALE_SECONDS,
     MQTT_BROKER,
     MQTT_PORT,
     MQTT_USERNAME,
@@ -345,6 +351,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     _mask_secret(new_username),
                 )
 
+        # Timing options (all with lowered upstream-PR #60 defaults)
+        mqtt_stale_seconds = entry.options.get(
+            CONF_MQTT_STALE_SECONDS, DEFAULT_MQTT_STALE_SECONDS
+        )
+        http_fallback_seconds = entry.options.get(
+            CONF_HTTP_FALLBACK_SECONDS, DEFAULT_HTTP_FALLBACK_SECONDS
+        )
+        mqtt_keepalive_seconds = entry.options.get(
+            CONF_MQTT_KEEPALIVE_SECONDS, DEFAULT_MQTT_KEEPALIVE_SECONDS
+        )
+
         def _create_sdk(api: MowerAPI) -> NavimowSDK:
             sdk = NavimowSDK(
                 broker=mqtt_host,
@@ -355,8 +372,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 auth_headers=auth_headers,
                 loop=hass.loop,
                 records=devices,
-                # broker 每小时断连时，优先用 MQTT 协议层 keepalive（PINGREQ/PINGRESP）保活。
-                keepalive_seconds=2400,  # 40 分钟
+                # MQTT protocol-level keepalive (PINGREQ/PINGRESP) for faster
+                # detection of half-open TCP connections.
+                keepalive_seconds=mqtt_keepalive_seconds,
                 reconnect_min_delay=1,
                 reconnect_max_delay=60,
             )
@@ -390,6 +408,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 oauth_session=oauth_session,
                 battery_refresh_seconds=battery_refresh_seconds,
                 status_fetcher=status_fetcher,
+                mqtt_stale_seconds=mqtt_stale_seconds,
+                http_fallback_seconds=http_fallback_seconds,
             )
             await coordinator.async_setup()
             await coordinator.async_config_entry_first_refresh()

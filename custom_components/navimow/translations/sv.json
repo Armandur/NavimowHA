@@ -42,7 +42,10 @@
           "gps_ref2_x": "Referens 2: lokal X (m)",
           "gps_ref2_y": "Referens 2: lokal Y (m)",
           "gps_ref2_lat": "Referens 2: latitud",
-          "gps_ref2_lon": "Referens 2: longitud"
+          "gps_ref2_lon": "Referens 2: longitud",
+          "mqtt_stale_seconds": "Tröskel för inaktuellt MQTT-tillstånd (sekunder)",
+          "http_fallback_seconds": "Pollningsintervall för HTTP-reserv (sekunder)",
+          "mqtt_keepalive_seconds": "Keepalive-intervall för MQTT (sekunder)"
         }
       }
     }

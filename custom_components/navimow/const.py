@@ -38,11 +38,21 @@ MQTT_PASSWORD: Final | None = None
 # 更新间隔（秒）
 UPDATE_INTERVAL: Final = 30
 
-# MQTT 超时时间（秒），超过该时间未收到消息则走 HTTP 兜底
-MQTT_STALE_SECONDS: Final = 300
-
-# HTTP 兜底最小拉取间隔（秒），避免频繁请求
-HTTP_FALLBACK_MIN_INTERVAL: Final = 3600
+# Freshness/fallback timing. Defaults lowered (upstream PR #60) so entities
+# recover within a minute when the server stops pushing state (docked/charging)
+# instead of freezing for hours. All three are configurable in the options.
+#
+# MQTT_STALE_SECONDS: state considered stale this long after the last *state*
+#   push (attribute packets don't count — see the coordinator), triggering the
+#   HTTP fallback.
+CONF_MQTT_STALE_SECONDS: Final = "mqtt_stale_seconds"
+DEFAULT_MQTT_STALE_SECONDS: Final = 90
+# HTTP_FALLBACK_SECONDS: minimum interval between HTTP status polls.
+CONF_HTTP_FALLBACK_SECONDS: Final = "http_fallback_seconds"
+DEFAULT_HTTP_FALLBACK_SECONDS: Final = 60
+# MQTT_KEEPALIVE_SECONDS: PINGREQ interval for faster half-open TCP detection.
+CONF_MQTT_KEEPALIVE_SECONDS: Final = "mqtt_keepalive_seconds"
+DEFAULT_MQTT_KEEPALIVE_SECONDS: Final = 120
 
 # Battery refresh (fork addition). MQTT state messages arrive rarely (mostly on
 # state transitions), so the battery sensor can lag by hours. The coordinator

@@ -42,7 +42,10 @@
           "gps_ref2_x": "Reference 2: local X (m)",
           "gps_ref2_y": "Reference 2: local Y (m)",
           "gps_ref2_lat": "Reference 2: latitude",
-          "gps_ref2_lon": "Reference 2: longitude"
+          "gps_ref2_lon": "Reference 2: longitude",
+          "mqtt_stale_seconds": "MQTT state stale threshold (seconds)",
+          "http_fallback_seconds": "HTTP fallback poll interval (seconds)",
+          "mqtt_keepalive_seconds": "MQTT keepalive interval (seconds)"
         }
       }
     }

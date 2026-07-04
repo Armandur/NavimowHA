@@ -51,6 +51,20 @@ Navimow → Configure (`battery_refresh_seconds`, `0` disables polling).
 The poll is **batched**: all mowers of an account share one
 `getVehicleStatus` request per refresh.
 
+**Freshness/fallback timing (configurable).** While docked or charging the
+server stops sending MQTT *state* messages (only attribute packets keep
+arriving), which used to freeze the activity/battery for hours. State
+freshness is now tracked separately from attribute traffic (upstream
+[PR #60](https://github.com/segwaynavimow/NavimowHA/pull/60)), and three
+timings are exposed in the options (defaults lowered so entities recover
+within a minute):
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `mqtt_stale_seconds` | `90` | How long since the last MQTT *state* push before the HTTP fallback engages. |
+| `http_fallback_seconds` | `60` | Minimum interval between HTTP status polls. |
+| `mqtt_keepalive_seconds` | `120` | MQTT PINGREQ interval (faster half-open TCP detection). |
+
 **Extra status attributes.** The battery sensor exposes whatever extra fields
 the status endpoint returns, as attributes (only when present):
 `descriptive_level` (FULL/HIGH/…), `capacity_remaining`, `vehicle_state`,

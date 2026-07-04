@@ -22,10 +22,10 @@ from mower_sdk.sdk import NavimowSDK
 
 from .const import (
     DEFAULT_BATTERY_REFRESH_SECONDS,
+    DEFAULT_HTTP_FALLBACK_SECONDS,
+    DEFAULT_MQTT_STALE_SECONDS,
     DOMAIN,
     EVENT_NAVIMOW,
-    HTTP_FALLBACK_MIN_INTERVAL,
-    MQTT_STALE_SECONDS,
     UPDATE_INTERVAL,
 )
 from .location import DOCKED_STATES, update_dock_estimate
@@ -76,6 +76,8 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         oauth_session: config_entry_oauth2_flow.OAuth2Session | None = None,
         battery_refresh_seconds: int = DEFAULT_BATTERY_REFRESH_SECONDS,
         status_fetcher: NavimowStatusFetcher | None = None,
+        mqtt_stale_seconds: int = DEFAULT_MQTT_STALE_SECONDS,
+        http_fallback_seconds: int = DEFAULT_HTTP_FALLBACK_SECONDS,
     ) -> None:
         super().__init__(
             hass,
@@ -88,6 +90,8 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.device = device
         self.oauth_session = oauth_session
         self.battery_refresh_seconds = battery_refresh_seconds
+        self.mqtt_stale_seconds = mqtt_stale_seconds
+        self.http_fallback_seconds = http_fallback_seconds
         self._status_fetcher = status_fetcher
         self._last_http_status: DeviceStatus | None = None
         self._last_command_result: dict[str, Any] | None = None
@@ -98,6 +102,11 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_location: dict[str, Any] | None = None
         self._dock: dict[str, Any] | None = None  # learned {"x","y","n"}
         self._last_mqtt_update: float | None = None
+        # State freshness tracked separately from general MQTT activity: while
+        # docked/charging the server sends only attribute packets, which must
+        # NOT keep the state timer alive or the HTTP fallback never fires and
+        # activity/battery freeze (upstream PR #60).
+        self._last_mqtt_state_update: float | None = None
         self._last_http_fetch: float | None = None
         self._last_data_source: str | None = None
 
@@ -116,6 +125,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "meta": {
                 "last_data_source": self._last_data_source,
                 "last_mqtt_update_monotonic": self._last_mqtt_update,
+                "last_mqtt_state_update_monotonic": self._last_mqtt_state_update,
                 "last_http_fetch_monotonic": self._last_http_fetch,
             },
         }
@@ -191,21 +201,25 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_attributes = cached_attrs
 
         now = time.monotonic()
-        is_mqtt_stale = (
-            self._last_mqtt_update is None
-            or now - self._last_mqtt_update > MQTT_STALE_SECONDS
+        # Drive the fallback off STATE freshness, not general MQTT activity:
+        # while docked/charging only attribute packets arrive, and counting
+        # those would keep the timer alive and suppress the fallback (PR #60).
+        is_state_stale = (
+            self._last_mqtt_state_update is None
+            or now - self._last_mqtt_state_update > self.mqtt_stale_seconds
         )
         can_http_fetch = (
             self._last_http_fetch is None
-            or now - self._last_http_fetch > HTTP_FALLBACK_MIN_INTERVAL
+            or now - self._last_http_fetch > self.http_fallback_seconds
         )
-        # MQTT state messages arrive rarely, so the battery reading goes stale.
-        # Poll the HTTP status endpoint at battery_refresh_seconds (0 = off).
+        # Even while state is fresh (mowing), the battery reading can lag; poll
+        # the HTTP status endpoint at battery_refresh_seconds (0 = off) to top
+        # up just the battery.
         battery_due = self.battery_refresh_seconds > 0 and (
             self._last_http_fetch is None
             or now - self._last_http_fetch > self.battery_refresh_seconds
         )
-        if (is_mqtt_stale and can_http_fetch) or battery_due:
+        if (is_state_stale and can_http_fetch) or battery_due:
             try:
                 if self._status_fetcher is not None:
                     status = await self._status_fetcher.async_get(self.device.id)
@@ -219,7 +233,7 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 else:
                     self._last_http_status = status
                     http_state = self._device_status_to_state(status)
-                    if is_mqtt_stale or self._last_state is None:
+                    if is_state_stale or self._last_state is None:
                         self._last_state = http_state
                         self._last_data_source = "http_fallback"
                     elif http_state.battery is not None:
@@ -252,7 +266,9 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             state.state,
             state.battery,
         )
-        self._last_mqtt_update = time.monotonic()
+        now = time.monotonic()
+        self._last_mqtt_update = now
+        self._last_mqtt_state_update = now
         self._last_data_source = "mqtt_push"
         self.hass.loop.call_soon_threadsafe(self._update_from_state, state)
 
@@ -336,10 +352,11 @@ class NavimowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self._last_event
 
     def is_mqtt_fresh(self) -> bool:
-        """True while MQTT push data is arriving within the stale window."""
+        """True while MQTT state pushes are arriving within the stale window."""
         return (
-            self._last_mqtt_update is not None
-            and time.monotonic() - self._last_mqtt_update <= MQTT_STALE_SECONDS
+            self._last_mqtt_state_update is not None
+            and time.monotonic() - self._last_mqtt_state_update
+            <= self.mqtt_stale_seconds
         )
 
     def set_last_command_result(self, result: dict[str, Any] | None) -> None:

@@ -17,7 +17,13 @@ from .const import (
     CLIENT_SECRET,
     API_BASE_URL,
     CONF_BATTERY_REFRESH_SECONDS,
+    CONF_HTTP_FALLBACK_SECONDS,
+    CONF_MQTT_KEEPALIVE_SECONDS,
+    CONF_MQTT_STALE_SECONDS,
     DEFAULT_BATTERY_REFRESH_SECONDS,
+    DEFAULT_HTTP_FALLBACK_SECONDS,
+    DEFAULT_MQTT_KEEPALIVE_SECONDS,
+    DEFAULT_MQTT_STALE_SECONDS,
     GPS_CALIBRATION_KEYS,
     MQTT_BROKER,
     MQTT_PORT,
@@ -181,6 +187,24 @@ class NavimowOptionsFlowHandler(config_entries.OptionsFlow):
                     DEFAULT_BATTERY_REFRESH_SECONDS,
                 ),
             ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
+            vol.Optional(
+                CONF_MQTT_STALE_SECONDS,
+                default=options.get(
+                    CONF_MQTT_STALE_SECONDS, DEFAULT_MQTT_STALE_SECONDS
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=30, max=3600)),
+            vol.Optional(
+                CONF_HTTP_FALLBACK_SECONDS,
+                default=options.get(
+                    CONF_HTTP_FALLBACK_SECONDS, DEFAULT_HTTP_FALLBACK_SECONDS
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=30, max=3600)),
+            vol.Optional(
+                CONF_MQTT_KEEPALIVE_SECONDS,
+                default=options.get(
+                    CONF_MQTT_KEEPALIVE_SECONDS, DEFAULT_MQTT_KEEPALIVE_SECONDS
+                ),
+            ): vol.All(vol.Coerce(int), vol.Range(min=30, max=3600)),
         }
         # 2-point GPS calibration for the device tracker; all eight fields
         # must be filled in for the tracker entity to be created.
