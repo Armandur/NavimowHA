@@ -39,8 +39,9 @@
  *                             #   they call lawn_mower.start_mowing / pause /
  *                             #   dock on status_entity
  *   zone_names:               # map zone/partition ids to friendly names in
- *     "3": Front lawn         #   the footer; unmapped ids show as the raw id
- *     "5": Back yard
+ *     "3": Front lawn         #   the footer; unmapped ids show as the raw id.
+ *     "5": Back yard          #   also matches the states "unknown"/"unavailable"
+ *     unknown: Unknown        #   (e.g. during a "mow all" task) if you map them
  *   marker_image:             # image drawn as the mower marker instead of the
  *                             #   dot, e.g. /local/mower.png. Must depict the
  *                             #   mower pointing UP; it rotates with heading

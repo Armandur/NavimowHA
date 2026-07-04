@@ -48,7 +48,7 @@ All optional; defaults shown.
 | `history_hours` | `24` | How far back the recorder is searched for session starts. |
 | `session_count` | `5` | Completed sessions drawn in grey behind the current one. `0` = current session only. |
 | `show_controls` | `true` | Mow / Pause / Dock buttons calling `lawn_mower.start_mowing` / `pause` / `dock` on `status_entity`. |
-| `zone_names` | — | Map of zone/partition id → friendly name for the footer; unmapped ids show as the raw id. |
+| `zone_names` | — | Map of zone/partition id → friendly name for the footer; unmapped ids show as the raw id. Also matches the states `unknown`/`unavailable` (the zone is `unknown` during a "mow all" task), so `zone_names: {unknown: Okänd}` translates those too. |
 | `marker_image` | — | Image drawn as the mower marker instead of the dot, e.g. `/local/i208_awd.png`. Must depict the mower **pointing up**; it rotates smoothly with the heading. See [markers/](markers/). |
 | `marker_size` | `60` | Marker image size in map units (the map viewBox is 1000 wide). |
 | `labels` | — | Override any UI string (English defaults). Keys: `mow`, `pause`, `dock` (buttons); `zone`, `status`, `position`, `battery` (footer); `dock_marker` (text by the dock marker, `""` hides it). Set only the keys you want to change. |
@@ -155,12 +155,24 @@ so the image doesn't need to be north-up):
        px: [220, 410]       # landmark: pixel [x, y]
    ```
 
-The view auto-fits to the whole image, which is drawn upright — the mower's
-trail and heading are rotated into the image's frame (the mower's RTK
-coordinate frame is usually not north-aligned). Set `straighten: false` to
-draw in the mower's frame instead (tilted image). If the overlay looks
-mirrored or rotated wrong, a pixel coordinate was probably read y-up — pixel
-y counts DOWN from the image's top-left.
+You do **not** need to rotate or north-align the image first — the two
+reference points encode scale, rotation and offset. The view auto-fits to the
+whole image, which is drawn upright; the mower's trail and heading are rotated
+into the image's frame (the mower's RTK coordinate frame is usually not
+north-aligned). Set `straighten: false` to draw in the mower's frame instead
+(tilted image). If the overlay looks mirrored or rotated wrong, a pixel
+coordinate was probably read y-up — pixel y counts DOWN from the image's
+top-left.
+
+> **Calibration helper.** Reading pixel coordinates by hand is fiddly.
+> [`calibrate.html`](calibrate.html) is a self-contained offline tool
+> (open it directly in a browser — nothing is uploaded): load the same image
+> you'll put in `/config/www`, click your two reference points (a loupe
+> magnifies for pixel precision), type each point's mower-meter coordinates,
+> and it generates the ready-to-paste `calibration:` block. It also shows the
+> image's ground size and rotation as a sanity check and lets you plot a third
+> known point to verify the fit. Calibrate against the exact file you deploy —
+> pixel coordinates are tied to that image's resolution.
 
 ## Dock marker
 

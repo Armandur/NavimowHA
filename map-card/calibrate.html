@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Navimow map card — overlay calibration helper</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px;
+    max-width: 1100px; margin: 0 auto; line-height: 1.45; }
+  h1 { font-size: 1.3rem; }
+  h2 { font-size: 1.05rem; margin: 1.2em 0 0.4em; }
+  p.hint { color: #666; margin: 0.3em 0 0.8em; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .col { flex: 1; min-width: 300px; }
+  #drop { border: 2px dashed #999; border-radius: 10px; padding: 26px;
+    text-align: center; color: #777; cursor: pointer; }
+  #drop.over { border-color: #1e88e5; color: #1e88e5; }
+  .viewport { position: relative; overflow: auto; max-height: 60vh;
+    border: 1px solid #ccc; border-radius: 8px; background: #333; }
+  canvas.map { display: block; cursor: crosshair; }
+  #loupe { position: fixed; width: 140px; height: 140px; border: 2px solid #fff;
+    border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.5); pointer-events: none;
+    display: none; z-index: 10; background: #000; }
+  .pt { border: 1px solid #ccc; border-radius: 8px; padding: 10px 12px; margin: 8px 0; }
+  .pt.active { border-color: #1e88e5; box-shadow: 0 0 0 1px #1e88e5; }
+  .pt h3 { margin: 0 0 6px; font-size: 0.95rem; }
+  .pt label { display: inline-block; width: 78px; }
+  input[type=number], input[type=text] { width: 120px; padding: 4px 6px;
+    font: inherit; }
+  input[type=text].wide { width: 220px; }
+  .px { color: #666; font-variant-numeric: tabular-nums; }
+  button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid #888;
+    background: #f0f0f0; cursor: pointer; }
+  button.primary { background: #1e88e5; color: #fff; border-color: #1e88e5; }
+  .warn { color: #c62828; font-weight: 600; }
+  .ok { color: #2e7d32; }
+  dl.stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 6px 0; }
+  dl.stats dt { color: #666; }
+  dl.stats dd { margin: 0; font-variant-numeric: tabular-nums; }
+  textarea { width: 100%; height: 170px; font-family: ui-monospace, monospace;
+    font-size: 0.85rem; box-sizing: border-box; }
+  code { background: rgba(128,128,128,0.15); padding: 0 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Navimow map card — overlay calibration helper</h1>
+<p class="hint">
+  Load the same image you will put in <code>/config/www</code>, click your two
+  reference points on it, type each point's mower-meter coordinates, and copy the
+  generated <code>calibration:</code> block into your card config. You do
+  <b>not</b> need to rotate or north-align the image first — the two points encode
+  scale, rotation and offset. Everything runs locally in your browser.
+</p>
+
+<div id="drop">Drop a satellite/aerial image here, or click to choose a file</div>
+<input type="file" id="file" accept="image/*" hidden>
+
+<div class="row" id="work" style="display:none; margin-top:14px;">
+  <div class="col">
+    <h2>1. Click your reference points</h2>
+    <p class="hint">Pick <b>Point 1</b> or <b>Point 2</b> below, then click that spot
+      on the map. A loupe magnifies for pixel precision. Drag a placed marker to
+      nudge it. Zoom in for accuracy.</p>
+    <label>Zoom <input type="range" id="zoom" min="1" max="6" step="0.5" value="1"></label>
+    <span id="dims" class="hint"></span>
+    <div class="viewport" id="viewport">
+      <canvas class="map" id="map"></canvas>
+    </div>
+  </div>
+
+  <div class="col">
+    <h2>2. Enter mower coordinates</h2>
+    <p class="hint">Read these from the sensors. Tip: Point 1 = the dock
+      (<code>dock_x</code>/<code>dock_y</code>); Point 2 = a far landmark you can
+      park the mower on (<code>position_x</code>/<code>position_y</code>).</p>
+
+    <div class="pt active" id="pt0" data-i="0">
+      <h3>Point 1 <span class="px" id="px0">— not placed —</span></h3>
+      <div><label>meters X</label><input type="number" step="any" id="mx0"></div>
+      <div><label>meters Y</label><input type="number" step="any" id="my0"></div>
+    </div>
+    <div class="pt" id="pt1" data-i="1">
+      <h3>Point 2 <span class="px" id="px1">— not placed —</span></h3>
+      <div><label>meters X</label><input type="number" step="any" id="mx1"></div>
+      <div><label>meters Y</label><input type="number" step="any" id="my1"></div>
+    </div>
+
+    <h2>3. Sanity check</h2>
+    <dl class="stats" id="stats"><dd id="statusline" class="hint">Place both points and enter their meters.</dd></dl>
+    <p class="hint">Verify a third known spot: type its meters and it will be
+      marked on the map — it should land where you expect.</p>
+    <div>
+      <label>test X</label><input type="number" step="any" id="tx">
+      <label style="width:auto">Y</label><input type="number" step="any" id="ty">
+      <button id="testbtn">Show on map</button>
+    </div>
+
+    <h2>4. Copy into your card</h2>
+    <div><label style="width:auto">overlay_image </label>
+      <input type="text" class="wide" id="imgpath" value="/local/yard.png"></div>
+    <textarea id="out" readonly></textarea>
+    <button class="primary" id="copy">Copy YAML</button>
+    <span id="copied" class="ok" style="display:none">Copied!</span>
+  </div>
+</div>
+
+<canvas id="loupe"></canvas>
+
+<script>
+// ---- transform math (identical to the card's _solveCalibration/_mToPx) ----
+function solve(cal) {
+  const ok = p => p && p.m.every(isFinite) && p.px.every(isFinite);
+  if (cal.length !== 2 || !ok(cal[0]) || !ok(cal[1])) return null;
+  const q1 = { r: cal[0].px[0], i: -cal[0].px[1] };
+  const q2 = { r: cal[1].px[0], i: -cal[1].px[1] };
+  const m1 = { r: cal[0].m[0], i: cal[0].m[1] };
+  const m2 = { r: cal[1].m[0], i: cal[1].m[1] };
+  const dq = { r: q2.r - q1.r, i: q2.i - q1.i };
+  const dm = { r: m2.r - m1.r, i: m2.i - m1.i };
+  const den = dq.r * dq.r + dq.i * dq.i;
+  if (den < 1e-9) return null;
+  const ar = (dm.r * dq.r + dm.i * dq.i) / den;
+  const ai = (dm.i * dq.r - dm.r * dq.i) / den;
+  const br = m1.r - (ar * q1.r - ai * q1.i);
+  const bi = m1.i - (ai * q1.r + ar * q1.i);
+  return { ar, ai, br, bi };
+}
+function mToPx(c, mx, my) {
+  const wr = mx - c.br, wi = my - c.bi;
+  const den = c.ar * c.ar + c.ai * c.ai;
+  const qr = (wr * c.ar + wi * c.ai) / den;
+  const qi = (wi * c.ar - wr * c.ai) / den;
+  return [qr, -qi];
+}
+
+// ---- state ----
+const img = new Image();
+let natW = 0, natH = 0, scale = 1, active = 0;
+const pts = [null, null];   // [ {px:[x,y]} , ... ] natural pixels
+let testPx = null;
+const full = document.createElement('canvas'); // offscreen natural-res copy
+const fctx = full.getContext('2d');
+
+const $ = id => document.getElementById(id);
+const canvas = $('map'), ctx = canvas.getContext('2d');
+const vp = $('viewport'), loupe = $('loupe'), lctx = loupe.getContext('2d');
+loupe.width = 140; loupe.height = 140;
+
+// ---- image loading ----
+function loadFile(f) {
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { img.src = r.result; };
+  r.readAsDataURL(f);
+}
+img.onload = () => {
+  natW = img.naturalWidth; natH = img.naturalHeight;
+  full.width = natW; full.height = natH;
+  fctx.drawImage(img, 0, 0);
+  $('dims').textContent = `image: ${natW} × ${natH} px`;
+  $('work').style.display = 'flex';
+  $('drop').textContent = 'Drop another image to start over';
+  redraw();
+};
+$('drop').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => loadFile(e.target.files[0]));
+['dragover', 'dragleave', 'drop'].forEach(ev =>
+  $('drop').addEventListener(ev, e => {
+    e.preventDefault();
+    $('drop').classList.toggle('over', ev === 'dragover');
+    if (ev === 'drop') loadFile(e.dataTransfer.files[0]);
+  }));
+
+// ---- drawing ----
+function redraw() {
+  if (!natW) return;
+  canvas.width = natW * scale;
+  canvas.height = natH * scale;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(full, 0, 0, canvas.width, canvas.height);
+  const marks = [
+    [pts[0], '#43a047', '1'], [pts[1], '#e53935', '2'],
+    [testPx ? { px: testPx } : null, '#1e88e5', 'T'],
+  ];
+  for (const [p, color, label] of marks) {
+    if (!p) continue;
+    const x = p.px[0] * scale, y = p.px[1] * scale;
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 10, y); ctx.lineTo(x + 10, y);
+    ctx.moveTo(x, y - 10); ctx.lineTo(x, y + 10); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.stroke();
+    ctx.fillStyle = color; ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(label, x + 10, y - 8);
+  }
+  recompute();
+}
+$('zoom').addEventListener('input', e => { scale = parseFloat(e.target.value); redraw(); });
+
+// ---- point placement ----
+function canvasToNat(e) {
+  const r = canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale];
+}
+let dragging = -1;
+canvas.addEventListener('mousedown', e => {
+  const [nx, ny] = canvasToNat(e);
+  // grab an existing marker if close
+  for (let i = 0; i < 2; i++) {
+    if (pts[i] && Math.hypot(pts[i].px[0] - nx, pts[i].px[1] - ny) * scale < 12) {
+      dragging = i; return;
+    }
+  }
+  pts[active] = { px: [Math.round(nx), Math.round(ny)] };
+  $('px' + active).textContent = `px [${pts[active].px[0]}, ${pts[active].px[1]}]`;
+  redraw();
+});
+window.addEventListener('mousemove', e => {
+  if (dragging >= 0) {
+    const [nx, ny] = canvasToNat(e);
+    pts[dragging].px = [Math.round(Math.max(0, Math.min(natW, nx))),
+                        Math.round(Math.max(0, Math.min(natH, ny)))];
+    $('px' + dragging).textContent = `px [${pts[dragging].px[0]}, ${pts[dragging].px[1]}]`;
+    redraw();
+  }
+});
+window.addEventListener('mouseup', () => { dragging = -1; });
+
+// ---- loupe (pixel-precise hover magnifier) ----
+canvas.addEventListener('mousemove', e => {
+  if (!natW) return;
+  const [nx, ny] = canvasToNat(e);
+  const src = 20; // sample window in natural px
+  lctx.imageSmoothingEnabled = false;
+  lctx.clearRect(0, 0, 140, 140);
+  lctx.drawImage(full, nx - src / 2, ny - src / 2, src, src, 0, 0, 140, 140);
+  lctx.strokeStyle = '#fff'; lctx.lineWidth = 1;
+  lctx.beginPath(); lctx.moveTo(70, 60); lctx.lineTo(70, 80);
+  lctx.moveTo(60, 70); lctx.lineTo(80, 70); lctx.stroke();
+  loupe.style.display = 'block';
+  loupe.style.left = (e.clientX + 20) + 'px';
+  loupe.style.top = (e.clientY - 160) + 'px';
+});
+canvas.addEventListener('mouseleave', () => { loupe.style.display = 'none'; });
+
+// ---- active point selection ----
+[$('pt0'), $('pt1')].forEach(el => el.addEventListener('click', () => {
+  active = +el.dataset.i;
+  $('pt0').classList.toggle('active', active === 0);
+  $('pt1').classList.toggle('active', active === 1);
+}));
+['mx0', 'my0', 'mx1', 'my1', 'imgpath'].forEach(id =>
+  $(id).addEventListener('input', recompute));
+
+// ---- test point ----
+$('testbtn').addEventListener('click', () => {
+  const c = currentCal();
+  const tx = parseFloat($('tx').value), ty = parseFloat($('ty').value);
+  if (!c || isNaN(tx) || isNaN(ty)) return;
+  testPx = mToPx(c, tx, ty).map(Math.round);
+  redraw();
+});
+
+// ---- compute + output ----
+function currentCal() {
+  if (!pts[0] || !pts[1]) return null;
+  const cal = [
+    { m: [parseFloat($('mx0').value), parseFloat($('my0').value)], px: pts[0].px },
+    { m: [parseFloat($('mx1').value), parseFloat($('my1').value)], px: pts[1].px },
+  ];
+  return solve(cal);
+}
+function recompute() {
+  const havePx = pts[0] && pts[1];
+  const m = ['mx0', 'my0', 'mx1', 'my1'].map(id => parseFloat($(id).value));
+  const haveM = m.every(isFinite);
+  const stats = $('stats');
+  if (!havePx || !haveM) {
+    stats.innerHTML = '<dd id="statusline" class="hint">Place both points and enter their meters.</dd>';
+    $('out').value = '';
+    return;
+  }
+  const c = solve([{ m: [m[0], m[1]], px: pts[0].px }, { m: [m[2], m[3]], px: pts[1].px }]);
+  const mpp = Math.hypot(c.ar, c.ai);              // meters per pixel
+  const rot = Math.atan2(c.ai, c.ar) * 180 / Math.PI;
+  const groundW = (natW * mpp), groundH = (natH * mpp);
+  const pxDist = Math.hypot(pts[0].px[0] - pts[1].px[0], pts[0].px[1] - pts[1].px[1]);
+  const mDist = Math.hypot(m[0] - m[2], m[1] - m[3]);
+  let warn = '';
+  if (pxDist < 40) warn = 'Points are very close in pixels — pick spots farther apart for accuracy.';
+  else if (mDist < 1) warn = 'Points are < 1 m apart — pick spots farther apart.';
+  stats.innerHTML =
+    `<dt>meters / pixel</dt><dd>${mpp.toFixed(4)}</dd>` +
+    `<dt>image covers</dt><dd>${groundW.toFixed(1)} × ${groundH.toFixed(1)} m</dd>` +
+    `<dt>image rotation</dt><dd>${rot.toFixed(1)}° vs mower frame</dd>` +
+    (warn ? `<dt></dt><dd class="warn">${warn}</dd>`
+          : `<dt></dt><dd class="ok">Looks sane — does the ground size match your yard?</dd>`);
+  const fmt = n => Number.isInteger(n) ? n + '.0' : String(n);
+  $('out').value =
+    `overlay_image: ${$('imgpath').value}\n` +
+    `overlay_opacity: 0.9\n` +
+    `calibration:\n` +
+    `  - m: [${fmt(m[0])}, ${fmt(m[1])}]\n` +
+    `    px: [${pts[0].px[0]}, ${pts[0].px[1]}]\n` +
+    `  - m: [${fmt(m[2])}, ${fmt(m[3])}]\n` +
+    `    px: [${pts[1].px[0]}, ${pts[1].px[1]}]\n`;
+}
+$('copy').addEventListener('click', () => {
+  $('out').select();
+  navigator.clipboard && navigator.clipboard.writeText($('out').value);
+  const c = $('copied'); c.style.display = 'inline';
+  setTimeout(() => { c.style.display = 'none'; }, 1500);
+});
+</script>
+</body>
+</html>
